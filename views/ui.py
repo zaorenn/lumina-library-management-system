@@ -39,7 +39,7 @@ IMAGE_CACHE = {}
 IMAGE_LOCK = threading.Lock()
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_CACHED_IMAGES = 128
-CATALOG_SCROLL_UNITS = 9
+CATALOG_SCROLL_UNITS = 30
 
 
 def _download_cover(url):
