@@ -1,1 +1,1 @@
-"""Lumina data-access package."""
+"""LibSys data-access package."""

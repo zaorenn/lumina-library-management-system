@@ -14,14 +14,24 @@ from controllers.library import (
     NotificationController,
     RequestController,
 )
+from controllers.validators import first_valid_isbn
+from models.database import check_integrity, refresh_catalog_metadata
 from views.theme import (
+    ACCENT,
     BACKGROUND,
     BORDER,
     DANGER,
     FONT_FAMILY,
+    GLASS,
+    GLASS_BORDER,
+    GLASS_HOVER,
+    GLASS_MUTED,
+    INPUT,
     PANEL,
     PRIMARY,
     PRIMARY_HOVER,
+    RADIUS_LARGE,
+    SIDEBAR,
     SUCCESS,
     TEXT,
     TEXT_MUTED,
@@ -59,10 +69,10 @@ def apply_treeview_style():
     style = ttk.Style()
     style.theme_use("default")
     mode = ctk.get_appearance_mode()
-    bg = "#FFFFFF" if mode == "Light" else "#2C2C2E"
-    fg = "#000000" if mode == "Light" else "#FFFFFF"
-    h_bg = "#E5E5EA" if mode == "Light" else "#3A3A3C"
-    sel_bg = "#007AFF" if mode == "Light" else "#0A84FF"
+    bg = GLASS[0] if mode == "Light" else GLASS[1]
+    fg = TEXT[0] if mode == "Light" else TEXT[1]
+    h_bg = GLASS_MUTED[0] if mode == "Light" else GLASS_MUTED[1]
+    sel_bg = PRIMARY[0] if mode == "Light" else PRIMARY[1]
 
     style.configure(
         "Treeview",
@@ -82,14 +92,21 @@ def apply_treeview_style():
 class AnimatedButton(ctk.CTkButton):
     def __init__(self, master, fg_color=APPLE_BLUE, **kwargs):
         kwargs.setdefault("hover_color", PRIMARY_HOVER)
-        super().__init__(master, fg_color=fg_color, corner_radius=10, **kwargs)
+        super().__init__(master, fg_color=fg_color, corner_radius=11, border_spacing=8, **kwargs)
 
 
 class GlassFrame(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
-        cr = kwargs.pop("corner_radius", 15)
+        cr = kwargs.pop("corner_radius", RADIUS_LARGE)
+        fg_color = kwargs.pop("fg_color", GLASS)
+        border_color = kwargs.pop("border_color", GLASS_BORDER)
         super().__init__(
-            master, fg_color=APPLE_PANEL, corner_radius=cr, border_width=1, border_color=BORDER, **kwargs
+            master,
+            fg_color=fg_color,
+            corner_radius=cr,
+            border_width=1,
+            border_color=border_color,
+            **kwargs,
         )
 
 
@@ -136,35 +153,108 @@ class AdminLoginView(ctk.CTkFrame):
 class AdminDashboard(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color="transparent")
-        ctk.CTkLabel(self, text="📊 Genel Bakış", font=ctk.CTkFont(size=32, weight="bold")).pack(
-            anchor="w", padx=40, pady=(40, 20)
+
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=40, pady=(38, 20))
+        title_group = ctk.CTkFrame(header, fg_color="transparent")
+        title_group.pack(side="left")
+        ctk.CTkLabel(title_group, text="Genel Bakış", font=ctk.CTkFont(size=32, weight="bold")).pack(
+            anchor="w"
         )
+        ctk.CTkLabel(
+            title_group,
+            text="Kütüphanenin canlı operasyon özeti",
+            text_color=APPLE_TEXT_MUTED,
+        ).pack(anchor="w", pady=(3, 0))
+        AnimatedButton(header, text="↻ Yenile", width=100, command=self.refresh).pack(side="right")
 
         self.cards = ctk.CTkFrame(self, fg_color="transparent")
         self.cards.pack(fill="x", padx=40)
 
-        self.lbl_tot = self.make_card("📚 Toplam Kitap", APPLE_BLUE)
-        self.lbl_act = self.make_card("⏳ Aktif Ödünç", APPLE_ORANGE)
-        self.lbl_ovr = self.make_card("🚫 Gecikmiş", APPLE_RED)
+        self.lbl_tot = self.make_card("Katalog", "aktif eser", APPLE_BLUE)
+        self.lbl_act = self.make_card("Dolaşım", "aktif ödünç", APPLE_ORANGE)
+        self.lbl_members = self.make_card("Topluluk", "onaylı üye", APPLE_GREEN)
+        self.lbl_pending = self.make_card("İş Kutusu", "bekleyen işlem", ACCENT)
+
+        self.alert = GlassFrame(self, height=68, fg_color=GLASS_MUTED)
+        self.alert.pack(fill="x", padx=50, pady=(22, 14))
+        self.alert.pack_propagate(False)
+        self.alert_icon = ctk.CTkLabel(self.alert, text="✓", font=ctk.CTkFont(size=22, weight="bold"))
+        self.alert_icon.pack(side="left", padx=(22, 12))
+        self.alert_text = ctk.CTkLabel(self.alert, text="", font=ctk.CTkFont(size=14, weight="bold"))
+        self.alert_text.pack(side="left")
+
+        self.activity = GlassFrame(self)
+        self.activity.pack(fill="both", expand=True, padx=40, pady=(0, 36))
+        ctk.CTkLabel(
+            self.activity,
+            text="Son Sistem Hareketleri",
+            font=ctk.CTkFont(size=17, weight="bold"),
+        ).pack(anchor="w", padx=22, pady=(18, 8))
+        self.activity_list = ctk.CTkFrame(self.activity, fg_color="transparent")
+        self.activity_list.pack(fill="both", expand=True, padx=18, pady=(0, 14))
 
         self.refresh()
 
-    def make_card(self, title, color):
+    def make_card(self, title, subtitle, color):
         c = GlassFrame(self.cards, height=150)
-        c.pack(side="left", expand=True, padx=10)
+        c.pack(side="left", fill="x", expand=True, padx=7)
         c.pack_propagate(False)
-        ctk.CTkLabel(c, text=title, font=ctk.CTkFont(size=18), text_color=APPLE_TEXT_MUTED).pack(
-            pady=(30, 10)
+        ctk.CTkLabel(c, text=title.upper(), font=ctk.CTkFont(size=11, weight="bold"), text_color=color).pack(
+            anchor="w", padx=20, pady=(20, 2)
         )
-        lbl = ctk.CTkLabel(c, text="0", font=ctk.CTkFont(size=40, weight="bold"), text_color=color)
-        lbl.pack()
+        lbl = ctk.CTkLabel(c, text="0", font=ctk.CTkFont(size=38, weight="bold"), text_color=APPLE_TEXT)
+        lbl.pack(anchor="w", padx=20)
+        ctk.CTkLabel(c, text=subtitle, font=ctk.CTkFont(size=11), text_color=APPLE_TEXT_MUTED).pack(
+            anchor="w", padx=20
+        )
         return lbl
 
     def refresh(self):
-        t, a, o = BorrowController.get_dashboard_stats()
-        self.lbl_tot.configure(text=str(t))
-        self.lbl_act.configure(text=str(a))
-        self.lbl_ovr.configure(text=str(o))
+        overview = BorrowController.get_admin_overview()
+        pending = overview["pending_members"] + overview["book_requests"] + overview["profile_requests"]
+        self.lbl_tot.configure(text=str(overview["titles"]))
+        self.lbl_act.configure(text=str(overview["active_borrows"]))
+        self.lbl_members.configure(text=str(overview["members"]))
+        self.lbl_pending.configure(text=str(pending))
+
+        overdue = overview["overdue"]
+        if overdue:
+            self.alert_icon.configure(text="!", text_color=APPLE_RED)
+            self.alert_text.configure(
+                text=f"{overdue} gecikmiş ödünç kaydı ilgilenmenizi bekliyor.", text_color=APPLE_RED
+            )
+        else:
+            self.alert_icon.configure(text="✓", text_color=APPLE_GREEN)
+            self.alert_text.configure(
+                text=f"Dolaşım düzenli • toplam {overview['copies']} fiziksel kopya yönetiliyor.",
+                text_color=APPLE_GREEN,
+            )
+
+        for child in self.activity_list.winfo_children():
+            child.destroy()
+        activities = BorrowController.get_recent_activity()
+        if not activities:
+            ctk.CTkLabel(
+                self.activity_list,
+                text="Henüz kaydedilmiş bir sistem hareketi yok.",
+                text_color=APPLE_TEXT_MUTED,
+            ).pack(anchor="w", padx=4, pady=12)
+            return
+        icons = {"BORROW": "↗", "RETURN": "↙", "CREATE": "+", "UPDATE": "✎", "ARCHIVE": "−"}
+        for action, description, action_date in activities:
+            row = ctk.CTkFrame(self.activity_list, fg_color=GLASS_MUTED, corner_radius=10, height=42)
+            row.pack(fill="x", pady=3)
+            row.pack_propagate(False)
+            ctk.CTkLabel(
+                row,
+                text=icons.get(action, "•"),
+                width=38,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                text_color=ACCENT,
+            ).pack(side="left", padx=(8, 2))
+            ctk.CTkLabel(row, text=description, anchor="w").pack(side="left", fill="x", expand=True)
+            ctk.CTkLabel(row, text=str(action_date), text_color=APPLE_TEXT_MUTED).pack(side="right", padx=14)
 
 
 class AdminBooksView(ctk.CTkFrame):
@@ -175,7 +265,27 @@ class AdminBooksView(ctk.CTkFrame):
         ctk.CTkLabel(top, text="📚 Kitap Envanteri", font=ctk.CTkFont(size=32, weight="bold")).pack(
             side="left"
         )
-        AnimatedButton(top, text="+ Manuel Kitap Ekle", command=self.manual_add).pack(side="right")
+        AnimatedButton(top, text="+ Yeni Kitap", command=self.manual_add).pack(side="right", padx=(8, 0))
+        AnimatedButton(
+            top,
+            text="Arşivle",
+            fg_color=APPLE_RED,
+            hover_color=("#B52F46", "#E05269"),
+            command=self.archive_selected,
+        ).pack(side="right", padx=(8, 0))
+        AnimatedButton(
+            top, text="Düzenle", fg_color=GLASS_MUTED, text_color=APPLE_TEXT, command=self.edit_selected
+        ).pack(side="right", padx=(8, 0))
+        self.search_entry = ctk.CTkEntry(
+            top,
+            placeholder_text="Başlık, yazar, ISBN ara…",
+            width=240,
+            height=38,
+            fg_color=INPUT,
+            border_color=GLASS_BORDER,
+        )
+        self.search_entry.pack(side="right", padx=(0, 8))
+        self.search_entry.bind("<KeyRelease>", lambda _event: self.refresh())
 
         # Table
         self.t_frame = GlassFrame(self)
@@ -203,14 +313,36 @@ class AdminBooksView(ctk.CTkFrame):
     def refresh(self):
         for i in self.tree.get_children():
             self.tree.delete(i)
-        for b in BookController.get_all_books():
+        for b in BookController.get_all_books(self.search_entry.get()):
             # Description and cover URL are retained as hidden values for editing.
             self.tree.insert("", "end", values=(b[0], b[1], b[2], b[3], b[4], b[5], b[8], b[9], b[6], b[7]))
 
     def on_double(self, e):
-        sel = self.tree.selection()
-        if sel:
-            EditBookModal(self, self.tree.item(sel, "values"), self.refresh)
+        self.edit_selected()
+
+    def edit_selected(self):
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showinfo("Kitap seçin", "Düzenlemek için tablodan bir kitap seçin.")
+            return
+        EditBookModal(self, self.tree.item(selection, "values"), self.refresh)
+
+    def archive_selected(self):
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showinfo("Kitap seçin", "Arşivlemek için tablodan bir kitap seçin.")
+            return
+        values = self.tree.item(selection, "values")
+        if not messagebox.askyesno(
+            "Kitabı arşivle", f"'{values[1]}' katalogdan kaldırılsın mı? Geçmiş kayıtları korunacak."
+        ):
+            return
+        success, result_message = BookController.delete_book(values[0])
+        if success:
+            self.refresh()
+            messagebox.showinfo("Başarılı", result_message)
+        else:
+            messagebox.showerror("Arşivlenemedi", result_message)
 
     def manual_add(self):
         vals = ["", "", "", "", "Genel", str(datetime.date.today().year), "3", "3", "", ""]
@@ -298,8 +430,8 @@ class EditBookModal(ctk.CTkToplevel):
                 )
                 r.raise_for_status()
                 docs = r.json().get("docs", [])
-                if docs:
-                    key = docs[0].get("key")
+                key = docs[0].get("key") if docs else None
+                if key:
                     r2 = requests.get(f"https://openlibrary.org{key}.json", timeout=5)
                     r2.raise_for_status()
                     desc = r2.json().get("description", "Bu kitap için özet bulunamadı.")
@@ -370,7 +502,7 @@ class AdminApprovalsView(ctk.CTkFrame):
             anchor="w", padx=40, pady=(40, 20)
         )
         self.t_frame = GlassFrame(self)
-        self.t_frame.pack(fill="both", expand=True, padx=40, pady=(0, 40))
+        self.t_frame.pack(fill="both", expand=True, padx=40, pady=(0, 12))
 
         apply_treeview_style()
         self.tree = ttk.Treeview(self.t_frame, columns=("id", "n", "e", "p", "d"), show="headings")
@@ -378,9 +510,12 @@ class AdminApprovalsView(ctk.CTkFrame):
             self.tree.heading(c, text=h)
         self.tree.pack(fill="both", expand=True, padx=20, pady=20)
         self.tree.bind("<Double-1>", self.on_double)
-        ctk.CTkLabel(self, text="* Üyeliği onaylamak için çift tıklayın.", text_color=APPLE_TEXT_MUTED).pack(
-            pady=10
-        )
+        footer = ctk.CTkFrame(self, fg_color="transparent")
+        footer.pack(fill="x", padx=40, pady=(0, 28))
+        ctk.CTkLabel(
+            footer, text="Yeni üyeleri doğrulayıp sisteme kabul edin.", text_color=APPLE_TEXT_MUTED
+        ).pack(side="left")
+        AnimatedButton(footer, text="Seçili Üyeyi Onayla", command=self.approve_selected).pack(side="right")
         self.refresh()
 
     def refresh(self):
@@ -390,8 +525,14 @@ class AdminApprovalsView(ctk.CTkFrame):
             self.tree.insert("", "end", values=m)
 
     def on_double(self, e):
+        self.approve_selected()
+
+    def approve_selected(self):
         sel = self.tree.selection()
-        if sel and messagebox.askyesno("Onayla", "Bu hesabı aktifleştirmek istiyor musunuz?"):
+        if not sel:
+            messagebox.showinfo("Üye seçin", "Onaylamak için bekleyen bir üyeyi seçin.")
+            return
+        if messagebox.askyesno("Onayla", "Bu hesabı aktifleştirmek istiyor musunuz?"):
             success, message = MemberController.approve_member(self.tree.item(sel, "values")[0])
             if success:
                 self.refresh()
@@ -408,6 +549,23 @@ class AdminMembersView(ctk.CTkFrame):
             side="left"
         )
         AnimatedButton(top, text="+ Manuel Üye Ekle", command=self.manual_add).pack(side="right")
+        AnimatedButton(
+            top,
+            text="Seçili Üyeyi Arşivle",
+            fg_color=APPLE_RED,
+            hover_color=("#B52F46", "#E05269"),
+            command=self.archive_selected,
+        ).pack(side="right", padx=8)
+        self.search_entry = ctk.CTkEntry(
+            top,
+            placeholder_text="Ad veya e-posta ara…",
+            width=220,
+            height=38,
+            fg_color=INPUT,
+            border_color=GLASS_BORDER,
+        )
+        self.search_entry.pack(side="right", padx=(0, 4))
+        self.search_entry.bind("<KeyRelease>", lambda _event: self.refresh())
 
         self.t_frame = GlassFrame(self)
         self.t_frame.pack(fill="both", expand=True, padx=40, pady=(0, 40))
@@ -422,14 +580,20 @@ class AdminMembersView(ctk.CTkFrame):
     def refresh(self):
         for i in self.tree.get_children():
             self.tree.delete(i)
-        for m in MemberController.get_all_members():
+        for m in MemberController.get_all_members(self.search_entry.get()):
             self.tree.insert("", "end", values=m)
 
     def on_double(self, e):
+        self.archive_selected()
+
+    def archive_selected(self):
         sel = self.tree.selection()
-        if sel and messagebox.askyesno(
+        if not sel:
+            messagebox.showinfo("Üye seçin", "Arşivlemek için tablodan bir üye seçin.")
+            return
+        if messagebox.askyesno(
             "Sil",
-            "Bu üyeyi sistemden silmek istediğinize emin misiniz? (Ödünç geçmişi 'Tüm Ödünç Geçmişi' sekmesinde tutulmaya devam edecektir)",
+            "Bu üyeyi arşivlemek istediğinize emin misiniz? Ödünç geçmişi korunacaktır.",
         ):
             success, msg = MemberController.delete_member(self.tree.item(sel, "values")[0])
             if success:
@@ -489,7 +653,7 @@ class AdminBorrowsView(ctk.CTkFrame):
             anchor="w", padx=40, pady=(40, 20)
         )
         self.t_frame = GlassFrame(self)
-        self.t_frame.pack(fill="both", expand=True, padx=40, pady=(0, 40))
+        self.t_frame.pack(fill="both", expand=True, padx=40, pady=(0, 12))
 
         apply_treeview_style()
         self.tree = ttk.Treeview(
@@ -503,11 +667,14 @@ class AdminBorrowsView(ctk.CTkFrame):
             self.tree.heading(c, text=h)
         self.tree.pack(fill="both", expand=True, padx=20, pady=20)
         self.tree.bind("<Double-1>", self.on_double)
+        footer = ctk.CTkFrame(self, fg_color="transparent")
+        footer.pack(fill="x", padx=40, pady=(0, 28))
         ctk.CTkLabel(
-            self,
-            text="* Manuel iade almak için kayda çift tıklayın (Örn: Üye silinmişse veya kitabı elden verdiyse).",
+            footer,
+            text="Aktif bir kaydı seçerek manuel iade işlemini tamamlayabilirsiniz.",
             text_color=APPLE_TEXT_MUTED,
-        ).pack(pady=10)
+        ).pack(side="left")
+        AnimatedButton(footer, text="Seçili Kaydı İade Al", command=self.return_selected).pack(side="right")
         self.refresh()
 
     def refresh(self):
@@ -519,14 +686,24 @@ class AdminBorrowsView(ctk.CTkFrame):
             self.tree.insert("", "end", values=(br_id, title, member, b_date, r_date, status, fee))
 
     def on_double(self, e):
+        self.return_selected()
+
+    def return_selected(self):
         sel = self.tree.selection()
-        if sel:
-            act = self.tree.item(sel, "values")[5]
-            if act == "⏳ Kullanıcıda" and messagebox.askyesno(
-                "İade", "Bu kitabı manuel olarak iade almak istiyor musunuz?"
-            ):
-                BorrowController.return_book(self.tree.item(sel, "values")[0])
+        if not sel:
+            messagebox.showinfo("Kayıt seçin", "İade almak için aktif bir ödünç kaydı seçin.")
+            return
+        values = self.tree.item(sel, "values")
+        if values[5] != "⏳ Kullanıcıda":
+            messagebox.showinfo("İade tamamlanmış", "Bu kayıt daha önce iade edilmiş.")
+            return
+        if messagebox.askyesno("İade", "Bu kitabı manuel olarak iade almak istiyor musunuz?"):
+            success, result_message = BorrowController.return_book(values[0])
+            if success:
                 self.refresh()
+                messagebox.showinfo("Başarılı", result_message)
+            else:
+                messagebox.showerror("İade alınamadı", result_message)
 
 
 class AdminOpenLibraryView(ctk.CTkFrame):
@@ -577,15 +754,18 @@ class AdminOpenLibraryView(ctk.CTkFrame):
 
     def _show_results(self, docs):
         self.status.configure(text=f"✅ {len(docs)} sonuç bulundu.")
+        rendered = 0
         for d in docs:
             t = d.get("title", "Bilinmiyor")
-            a = d.get("author_name", ["Bilinmiyor"])[0]
-            isbn_values = d.get("isbn") or []
-            if not isbn_values:
+            authors = d.get("author_name") or ["Bilinmiyor"]
+            a = authors[0]
+            selected_isbn = first_valid_isbn(d.get("isbn"))
+            if not selected_isbn:
                 continue
-            isbn = isbn_values[0]
-            sub = d.get("subject", ["Genel"])[0]
-            y = d.get("first_publish_year", 0)
+            isbn = selected_isbn
+            subjects = d.get("subject") or ["Genel"]
+            sub = subjects[0]
+            y = d.get("first_publish_year") or datetime.date.today().year
 
             c = GlassFrame(self.scroll, height=100)
             c.pack(fill="x", pady=10)
@@ -614,6 +794,15 @@ class AdminOpenLibraryView(ctk.CTkFrame):
                     title, auth, i, s, yr, q_ent
                 ),
             ).pack(side="left")
+            rendered += 1
+
+        if rendered == 0:
+            self.status.configure(text="ISBN bilgisi olan sonuç bulunamadı.")
+            ctk.CTkLabel(
+                self.scroll,
+                text="Farklı bir kitap adı, yazar veya ISBN ile yeniden deneyin.",
+                text_color=APPLE_TEXT_MUTED,
+            ).pack(pady=40)
 
     def add_book(self, t, a, i, s, y, q_ent):
         try:
@@ -635,7 +824,7 @@ class AdminRequestsView(ctk.CTkFrame):
         )
 
         self.t_frame = GlassFrame(self)
-        self.t_frame.pack(fill="both", expand=True, padx=40, pady=(0, 40))
+        self.t_frame.pack(fill="both", expand=True, padx=40, pady=(0, 12))
 
         apply_treeview_style()
         self.tree = ttk.Treeview(
@@ -652,11 +841,14 @@ class AdminRequestsView(ctk.CTkFrame):
         self.tree.pack(fill="both", expand=True, padx=20, pady=20)
         self.tree.bind("<Double-1>", self.on_double)
 
+        footer = ctk.CTkFrame(self, fg_color="transparent")
+        footer.pack(fill="x", padx=40, pady=(0, 28))
         ctk.CTkLabel(
-            self,
-            text="* Kütüphaneye eklemek veya reddetmek için isteğe çift tıklayın.",
+            footer,
+            text="İsteği kataloğa ekleyebilir veya üyeye ret bildirimi gönderebilirsiniz.",
             text_color=APPLE_TEXT_MUTED,
-        ).pack(pady=10)
+        ).pack(side="left")
+        AnimatedButton(footer, text="Seçili İsteği İşle", command=self.process_selected).pack(side="right")
         self.refresh()
 
     def refresh(self):
@@ -666,8 +858,12 @@ class AdminRequestsView(ctk.CTkFrame):
             self.tree.insert("", "end", values=r)
 
     def on_double(self, e):
+        self.process_selected()
+
+    def process_selected(self):
         sel = self.tree.selection()
         if not sel:
+            messagebox.showinfo("İstek seçin", "İşlemek için tablodan bir kitap isteği seçin.")
             return
         vals = self.tree.item(sel, "values")
         req_id, member_id, member_name, title, author, isbn, date, url = vals
@@ -701,7 +897,7 @@ class AdminProfileRequestsView(ctk.CTkFrame):
         ).pack(anchor="w", padx=40, pady=(40, 20))
 
         self.t_frame = GlassFrame(self)
-        self.t_frame.pack(fill="both", expand=True, padx=40, pady=(0, 40))
+        self.t_frame.pack(fill="both", expand=True, padx=40, pady=(0, 12))
 
         apply_treeview_style()
         self.tree = ttk.Treeview(
@@ -717,9 +913,14 @@ class AdminProfileRequestsView(ctk.CTkFrame):
         self.tree.pack(fill="both", expand=True, padx=20, pady=20)
         self.tree.bind("<Double-1>", self.on_double)
 
+        footer = ctk.CTkFrame(self, fg_color="transparent")
+        footer.pack(fill="x", padx=40, pady=(0, 28))
         ctk.CTkLabel(
-            self, text="* Onaylamak veya reddetmek için talebe çift tıklayın.", text_color=APPLE_TEXT_MUTED
-        ).pack(pady=10)
+            footer,
+            text="Profil değişikliklerini inceleyip üyeye sonuç bildirimi gönderin.",
+            text_color=APPLE_TEXT_MUTED,
+        ).pack(side="left")
+        AnimatedButton(footer, text="Seçili Talebi İncele", command=self.process_selected).pack(side="right")
         self.refresh()
 
     def refresh(self):
@@ -731,8 +932,12 @@ class AdminProfileRequestsView(ctk.CTkFrame):
             self.tree.insert("", "end", values=r)
 
     def on_double(self, e):
+        self.process_selected()
+
+    def process_selected(self):
         sel = self.tree.selection()
         if not sel:
+            messagebox.showinfo("Talep seçin", "İncelemek için tablodan bir profil talebi seçin.")
             return
         vals = self.tree.item(sel, "values")
         req_id, member_id, member_name, new_name, new_email, date = vals
@@ -805,7 +1010,7 @@ class AdminProfileView(ctk.CTkFrame):
         self.e_old_pw = ctk.CTkEntry(f2, placeholder_text="Mevcut Şifre", show="●", width=300, height=36)
         self.e_old_pw.pack(anchor="w", padx=20, pady=5)
         self.e_new_pw1 = ctk.CTkEntry(
-            f2, placeholder_text="Yeni Şifre (En az 7 karakter)", show="●", width=300, height=36
+            f2, placeholder_text="Yeni Şifre (En az 8 karakter)", show="●", width=300, height=36
         )
         self.e_new_pw1.pack(anchor="w", padx=20, pady=5)
         self.e_new_pw2 = ctk.CTkEntry(
@@ -868,7 +1073,7 @@ class AdminSettingsView(ctk.CTkFrame):
         )
 
         f = GlassFrame(self, height=200)
-        f.pack(fill="x", padx=40, pady=20)
+        f.pack(fill="x", padx=40, pady=(0, 16))
         f.pack_propagate(False)
 
         ctk.CTkLabel(f, text="Görünüm Modu", font=ctk.CTkFont(size=18, weight="bold")).pack(
@@ -883,26 +1088,70 @@ class AdminSettingsView(ctk.CTkFrame):
             f, text="Aydınlık Mod (Light)", variable=self.mode_var, value="Light", command=self.change_mode
         ).pack(anchor="w", padx=20, pady=10)
 
+        maintenance = GlassFrame(self)
+        maintenance.pack(fill="x", padx=40, pady=(0, 20))
+        ctk.CTkLabel(maintenance, text="Veri Bakımı", font=ctk.CTkFont(size=18, weight="bold")).pack(
+            anchor="w", padx=20, pady=(20, 4)
+        )
+        ctk.CTkLabel(
+            maintenance,
+            text="Veritabanını denetleyin veya başlangıç kataloğunun kapak ve özet bilgilerini onarın.",
+            text_color=APPLE_TEXT_MUTED,
+        ).pack(anchor="w", padx=20, pady=(0, 14))
+        actions = ctk.CTkFrame(maintenance, fg_color="transparent")
+        actions.pack(anchor="w", padx=20, pady=(0, 20))
+        AnimatedButton(actions, text="Veritabanını Doğrula", command=self.verify_database).pack(
+            side="left", padx=(0, 10)
+        )
+        AnimatedButton(
+            actions,
+            text="Katalog Metadatasını Onar",
+            fg_color=GLASS_MUTED,
+            text_color=APPLE_TEXT,
+            command=self.repair_catalog,
+        ).pack(side="left")
+
     def change_mode(self):
         ctk.set_appearance_mode(self.mode_var.get())
         apply_treeview_style()
+
+    def verify_database(self):
+        success, result = check_integrity()
+        if success:
+            messagebox.showinfo("Veritabanı sağlam", "SQLite bütünlük denetimi başarıyla tamamlandı.")
+        else:
+            messagebox.showerror("Bütünlük sorunu", f"SQLite sonucu: {result}")
+
+    def repair_catalog(self):
+        inserted = refresh_catalog_metadata()
+        messagebox.showinfo(
+            "Katalog hazır",
+            f"Kapak ve özet bilgileri doğrulandı. Eksik {inserted} katalog kaydı eklendi.",
+        )
 
 
 class AdminWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Lumina • Yönetim Stüdyosu")
+        self.title("LibSys • Yönetim Stüdyosu")
         self.geometry("1300x850")
         self.minsize(1100, 720)
         ctk.set_appearance_mode("dark")
         self.configure(fg_color=APPLE_BG)
         self.cur = None
         self.admin_user = None
+        self.main_shell = None
+        self.nav_buttons = {}
         self.show_login()
 
     def show_login(self):
         if self.cur:
             self.cur.destroy()
+            self.cur = None
+        if self.main_shell:
+            self.main_shell.destroy()
+            self.main_shell = None
+        self.admin_user = None
         self.cur = AdminLoginView(self, self.show_main)
         self.cur.pack(fill="both", expand=True)
 
@@ -913,15 +1162,18 @@ class AdminWindow(ctk.CTk):
         self.admin_user = admin_user
         if self.cur:
             self.cur.destroy()
+        if self.main_shell:
+            self.main_shell.destroy()
         m = ctk.CTkFrame(self, fg_color="transparent")
         m.pack(fill="both", expand=True)
+        self.main_shell = m
 
-        sb = GlassFrame(m, width=260, corner_radius=0)
+        sb = GlassFrame(m, width=260, corner_radius=0, fg_color=SIDEBAR, border_color=BORDER)
         sb.pack(side="left", fill="y")
         sb.pack_propagate(False)
 
         ctk.CTkLabel(
-            sb, text="◈ LUMINA", font=ctk.CTkFont(size=26, weight="bold"), text_color=APPLE_BLUE
+            sb, text="◈ LIBSYS", font=ctk.CTkFont(size=26, weight="bold"), text_color=APPLE_BLUE
         ).pack(pady=(45, 4))
         ctk.CTkLabel(
             sb, text="YÖNETİM STÜDYOSU", font=ctk.CTkFont(size=10, weight="bold"), text_color=APPLE_TEXT_MUTED
@@ -938,6 +1190,12 @@ class AdminWindow(ctk.CTk):
             else:
                 self.cur = c(self.content)
             self.cur.pack(fill="both", expand=True)
+            for view_class, button in self.nav_buttons.items():
+                is_active = view_class == c
+                button.configure(
+                    fg_color=GLASS_MUTED if is_active else "transparent",
+                    text_color=ACCENT if is_active else APPLE_TEXT,
+                )
 
         ic_cat = get_icon("book")
         ic_home = get_icon("home")
@@ -960,6 +1218,7 @@ class AdminWindow(ctk.CTk):
             ("Ayarlar", AdminSettingsView, ic_set),
         ]
 
+        self.nav_buttons = {}
         for text, cls, ic in menus:
             b = ctk.CTkButton(
                 sb,
@@ -968,10 +1227,29 @@ class AdminWindow(ctk.CTk):
                 font=ctk.CTkFont(size=14),
                 fg_color="transparent",
                 text_color=APPLE_TEXT,
-                hover_color=("#E5E5EA", "#3A3A3C"),
+                hover_color=GLASS_HOVER,
                 anchor="w",
                 command=lambda c=cls: nav(c),
+                corner_radius=10,
+                height=34,
             )
             b.pack(fill="x", padx=15, pady=4)
+            self.nav_buttons[cls] = b
+
+        ctk.CTkButton(
+            sb,
+            text="  Oturumu Kapat",
+            image=get_single_icon("logout.png"),
+            fg_color="transparent",
+            hover_color=GLASS_HOVER,
+            text_color=APPLE_RED,
+            anchor="w",
+            height=38,
+            command=self.logout,
+        ).pack(side="bottom", fill="x", padx=15, pady=22)
 
         nav(AdminDashboard)
+
+    def logout(self):
+        if messagebox.askyesno("Oturumu kapat", "Yönetici oturumunu kapatmak istiyor musunuz?"):
+            self.show_login()

@@ -1,4 +1,4 @@
--- Lumina Kütüphane Yönetim Sistemi
+-- LibSys Kütüphane Yönetim Sistemi
 -- SQLite 3.35+ için şema, indeksler ve iş kuralları.
 
 PRAGMA foreign_keys = ON;
@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS admins (
     username TEXT COLLATE NOCASE UNIQUE NOT NULL CHECK (length(trim(username)) >= 3),
     password_hash TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT 'Yönetici',
-    email TEXT COLLATE NOCASE UNIQUE NOT NULL DEFAULT 'admin@lumina.local'
+    email TEXT COLLATE NOCASE UNIQUE NOT NULL DEFAULT 'admin@libsys.local'
 );
 
 CREATE TABLE IF NOT EXISTS books (
@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS books (
 CREATE TABLE IF NOT EXISTS members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL CHECK (length(trim(name)) >= 2),
+    username TEXT COLLATE NOCASE,
     email TEXT COLLATE NOCASE UNIQUE NOT NULL,
     phone TEXT NOT NULL DEFAULT '',
     password_hash TEXT NOT NULL,
@@ -87,38 +88,6 @@ CREATE TABLE IF NOT EXISTS profile_requests (
     FOREIGN KEY (member_id) REFERENCES members (id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS reviews (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    book_id INTEGER NOT NULL,
-    member_id INTEGER NOT NULL,
-    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
-    comment TEXT NOT NULL DEFAULT '',
-    review_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (book_id) REFERENCES books (id) ON DELETE CASCADE,
-    FOREIGN KEY (member_id) REFERENCES members (id) ON DELETE CASCADE,
-    UNIQUE (book_id, member_id)
-);
-
-CREATE TABLE IF NOT EXISTS wishlist (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    book_id INTEGER NOT NULL,
-    member_id INTEGER NOT NULL,
-    added_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (book_id) REFERENCES books (id) ON DELETE CASCADE,
-    FOREIGN KEY (member_id) REFERENCES members (id) ON DELETE CASCADE,
-    UNIQUE (book_id, member_id)
-);
-
-CREATE TABLE IF NOT EXISTS reservations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    book_id INTEGER NOT NULL,
-    member_id INTEGER NOT NULL,
-    reservation_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    status TEXT NOT NULL DEFAULT 'Bekliyor',
-    FOREIGN KEY (book_id) REFERENCES books (id) ON DELETE CASCADE,
-    FOREIGN KEY (member_id) REFERENCES members (id) ON DELETE CASCADE
-);
-
 CREATE TABLE IF NOT EXISTS audit_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     action_type TEXT NOT NULL,
@@ -132,6 +101,9 @@ CREATE INDEX IF NOT EXISTS idx_books_catalog
     ON books (is_active, title, author);
 CREATE INDEX IF NOT EXISTS idx_members_approval
     ON members (is_active, is_approved, name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_members_username_unique
+    ON members (username COLLATE NOCASE)
+    WHERE username IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_borrows_active_member
     ON borrows (member_id, actual_return_date);
 CREATE INDEX IF NOT EXISTS idx_borrows_active_book

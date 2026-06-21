@@ -116,30 +116,37 @@ class AuthController:
 
     @staticmethod
     def login(member_email, raw_password):
+        login_value = str(member_email or "").strip()
         try:
-            normalized_email = email(member_email)
+            if "@" in login_value:
+                normalized_email = email(login_value)
+                normalized_username = ""
+            else:
+                normalized_email = ""
+                normalized_username = text(login_value, "Kullanıcı adı", minimum=3, maximum=50).lower()
         except ValidationError:
             return None, "Hatalı e-posta veya şifre."
 
         with db_session() as connection:
             row = connection.execute(
                 """
-                SELECT id, name, password_hash, is_approved, must_change_password
+                SELECT id, name, email, password_hash, is_approved, must_change_password
                 FROM members
-                WHERE email = ? COLLATE NOCASE AND is_active = 1
+                WHERE is_active = 1
+                  AND (email = ? COLLATE NOCASE OR username = ? COLLATE NOCASE)
                 """,
-                (normalized_email,),
+                (normalized_email, normalized_username),
             ).fetchone()
 
-        if not row or not _verify_password(str(raw_password or ""), row[2]):
+        if not row or not _verify_password(str(raw_password or ""), row[3]):
             return None, "Hatalı e-posta veya şifre."
-        if not row[3]:
+        if not row[4]:
             return None, "Hesabınız henüz yönetici tarafından onaylanmamış."
         return {
             "id": row[0],
             "name": row[1],
-            "email": normalized_email,
-            "must_change_password": row[4],
+            "email": row[2],
+            "must_change_password": row[5],
         }, "Başarılı"
 
     @staticmethod

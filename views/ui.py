@@ -10,14 +10,25 @@ from PIL import Image
 
 from controllers.auth import AuthController
 from controllers.library import BookController, BorrowController, NotificationController, RequestController
+from controllers.validators import first_valid_isbn
 from views.theme import (
+    ACCENT,
     BACKGROUND,
     BORDER,
     DANGER,
     FONT_FAMILY,
+    GLASS,
+    GLASS_BORDER,
+    GLASS_HOVER,
+    GLASS_MUTED,
+    INPUT,
     PANEL,
+    PANEL_ELEVATED,
     PRIMARY,
     PRIMARY_HOVER,
+    RADIUS_LARGE,
+    RADIUS_MEDIUM,
+    SIDEBAR,
     SUCCESS,
     TEXT,
     TEXT_MUTED,
@@ -32,7 +43,7 @@ MAX_CACHED_IMAGES = 128
 
 
 def _download_cover(url):
-    request = urllib.request.Request(url, headers={"User-Agent": "LuminaLibrary/2.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "LibSysLibrary/3.0"})
     with urllib.request.urlopen(request, timeout=8) as response:
         content_length = int(response.headers.get("Content-Length", 0) or 0)
         if content_length > MAX_IMAGE_BYTES:
@@ -85,10 +96,10 @@ def apply_treeview_style():
     style = ttk.Style()
     style.theme_use("default")
     mode = ctk.get_appearance_mode()
-    bg = "#FFFFFF" if mode == "Light" else "#2C2C2E"
-    fg = "#000000" if mode == "Light" else "#FFFFFF"
-    h_bg = "#E5E5EA" if mode == "Light" else "#3A3A3C"
-    sel_bg = "#007AFF" if mode == "Light" else "#0A84FF"
+    bg = GLASS[0] if mode == "Light" else GLASS[1]
+    fg = TEXT[0] if mode == "Light" else TEXT[1]
+    h_bg = GLASS_MUTED[0] if mode == "Light" else GLASS_MUTED[1]
+    sel_bg = PRIMARY[0] if mode == "Light" else PRIMARY[1]
 
     style.configure(
         "Treeview",
@@ -110,29 +121,52 @@ class AnimatedButton(ctk.CTkButton):
         h = kwargs.pop("height", 32)
         f = kwargs.pop("font", ctk.CTkFont(family=FONT_FAMILY, size=13))
         super().__init__(
-            master, fg_color=fg_color, hover_color=hover_color, corner_radius=6, height=h, font=f, **kwargs
+            master,
+            fg_color=fg_color,
+            hover_color=hover_color,
+            corner_radius=11,
+            height=h,
+            font=f,
+            border_spacing=8,
+            **kwargs,
         )
 
 
 class GlassFrame(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
-        cr = kwargs.pop("corner_radius", 12)
+        cr = kwargs.pop("corner_radius", RADIUS_LARGE)
+        fg_color = kwargs.pop("fg_color", GLASS)
+        border_color = kwargs.pop("border_color", GLASS_BORDER)
         super().__init__(
-            master, fg_color=APPLE_PANEL, corner_radius=cr, border_width=1, border_color=BORDER, **kwargs
+            master,
+            fg_color=fg_color,
+            corner_radius=cr,
+            border_width=1,
+            border_color=border_color,
+            **kwargs,
         )
 
 
 class CatalogCard(GlassFrame):
     def __init__(self, master, book, on_borrow):
-        super().__init__(master)
+        super().__init__(master, corner_radius=RADIUS_MEDIUM)
         self.book = book
         self.pack_propagate(False)
-        self.configure(width=260, height=360)
+        self.configure(width=270, height=420)
+        self.bind("<Enter>", lambda _event: self.configure(border_color=PRIMARY))
+        self.bind("<Leave>", lambda _event: self.configure(border_color=GLASS_BORDER))
 
         b_id, title, author, isbn, cat, year, desc, url, total, avail = book
 
-        self.cover_frame = ctk.CTkFrame(self, fg_color="transparent", height=180)
-        self.cover_frame.pack(fill="x", padx=10, pady=(10, 5))
+        self.cover_frame = ctk.CTkFrame(
+            self,
+            fg_color=PANEL_ELEVATED,
+            height=200,
+            corner_radius=13,
+            border_width=1,
+            border_color=BORDER,
+        )
+        self.cover_frame.pack(fill="x", padx=12, pady=(12, 6))
         self.cover_frame.pack_propagate(False)
 
         self.cover_lbl = ctk.CTkLabel(
@@ -144,11 +178,11 @@ class CatalogCard(GlassFrame):
             self.load_image(url)
 
         self.info_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.info_frame.pack(fill="both", expand=True, padx=15, pady=5)
+        self.info_frame.pack(fill="both", expand=True, padx=16, pady=(5, 8))
 
         title_lbl = ctk.CTkLabel(
             self.info_frame,
-            text=title[:25] + ("..." if len(title) > 25 else ""),
+            text=title[:29] + ("…" if len(title) > 29 else ""),
             font=ctk.CTkFont(family=FONT_FAMILY, size=15, weight="bold"),
             text_color=APPLE_TEXT,
         )
@@ -157,18 +191,47 @@ class CatalogCard(GlassFrame):
         author_lbl = ctk.CTkLabel(
             self.info_frame, text=f"👤 {author}", font=ctk.CTkFont(size=12), text_color=APPLE_TEXT_MUTED
         )
-        author_lbl.pack(anchor="w", pady=(2, 10))
+        author_lbl.pack(anchor="w", pady=(3, 7))
+
+        meta = ctk.CTkFrame(self.info_frame, fg_color="transparent")
+        meta.pack(fill="x")
+        ctk.CTkLabel(
+            meta,
+            text=f"  {cat}  ",
+            height=22,
+            corner_radius=11,
+            fg_color=GLASS_MUTED,
+            text_color=ACCENT,
+            font=ctk.CTkFont(size=11, weight="bold"),
+        ).pack(side="left")
+        ctk.CTkLabel(
+            meta,
+            text=str(year),
+            text_color=APPLE_TEXT_MUTED,
+            font=ctk.CTkFont(size=11),
+        ).pack(side="right")
+
+        summary = desc.strip() if desc else "Bu kitap için özet hazırlanıyor."
+        ctk.CTkLabel(
+            self.info_frame,
+            text=summary[:105] + ("…" if len(summary) > 105 else ""),
+            wraplength=230,
+            justify="left",
+            anchor="nw",
+            text_color=APPLE_TEXT_MUTED,
+            font=ctk.CTkFont(size=11),
+        ).pack(fill="x", pady=(8, 2))
 
         bot_frame = ctk.CTkFrame(self.info_frame, fg_color="transparent")
         bot_frame.pack(fill="x", side="bottom", pady=10)
 
         if avail > 0:
-            status_text = f"✨ Stok: {avail}"
+            status_text = f"● {avail} rafta"
             color = APPLE_GREEN
             btn_state = "normal"
             btn_text = "Ödünç Al"
         else:
-            status_text = "🚫 Tükendi"
+            status_text = "● Ödünçte"
             color = APPLE_RED
             btn_state = "disabled"
             btn_text = "Bekleniyor"
@@ -186,11 +249,11 @@ class CatalogCard(GlassFrame):
             bot_frame,
             text="Detaylar",
             width=70,
-            fg_color=APPLE_PANEL,
-            hover_color="#3A3A3C",
+            fg_color=GLASS_MUTED,
+            hover_color=GLASS_HOVER,
             text_color=APPLE_TEXT,
             border_width=1,
-            border_color="#3A3A3C",
+            border_color=GLASS_BORDER,
             command=lambda: BookDetailModal(self.winfo_toplevel(), book, on_borrow),
         )
         self.detail_btn.pack(side="right", padx=(0, 5))
@@ -221,7 +284,8 @@ class BookDetailModal(ctk.CTkToplevel):
     def __init__(self, master, book, on_borrow):
         super().__init__(master)
         self.title("Kitap Detayları")
-        self.geometry("600x700")
+        self.geometry("640x780")
+        self.minsize(600, 720)
         self.configure(fg_color=APPLE_BG)
         self.grab_set()
 
@@ -282,7 +346,7 @@ class BookDetailModal(ctk.CTkToplevel):
             command=lambda: self.handle_borrow(on_borrow, b_id),
         ).pack(anchor="w")
 
-        self.desc_frame = GlassFrame(self, height=120)
+        self.desc_frame = GlassFrame(self, height=180)
         self.desc_frame.pack(fill="x", padx=20, pady=10)
         self.desc_frame.pack_propagate(False)
         ctk.CTkLabel(self.desc_frame, text="Kitap Özeti", font=ctk.CTkFont(size=16, weight="bold")).pack(
@@ -292,7 +356,7 @@ class BookDetailModal(ctk.CTkToplevel):
             self.desc_frame,
             text=desc if desc else "Bu kitap için henüz bir özet bulunmuyor.",
             text_color=APPLE_TEXT_MUTED,
-            wraplength=520,
+            wraplength=560,
             justify="left",
         ).pack(anchor="w", padx=15)
 
@@ -310,16 +374,12 @@ class BookDetailModal(ctk.CTkToplevel):
                 text_color=APPLE_TEXT_MUTED,
             ).pack(anchor="w", padx=15, pady=5)
         else:
-            for b_name, b_date in borrowers:
-                f = ctk.CTkFrame(self.borrowers_frame, fg_color="transparent")
-                f.pack(fill="x", padx=15, pady=5)
-                ctk.CTkLabel(f, text=f"👤 {b_name}", font=ctk.CTkFont(size=14)).pack(side="left")
-                ctk.CTkLabel(
-                    f,
-                    text=f"⏳ Aldığı Tarih: {b_date}",
-                    font=ctk.CTkFont(size=12),
-                    text_color=APPLE_TEXT_MUTED,
-                ).pack(side="right")
+            ctk.CTkLabel(
+                self.borrowers_frame,
+                text=f"Bu kitabın {len(borrowers)} kopyası şu anda ödünçte.",
+                font=ctk.CTkFont(size=14, weight="bold"),
+                text_color=APPLE_ORANGE,
+            ).pack(anchor="w", padx=15, pady=5)
 
     def handle_borrow(self, on_borrow, b_id):
         self.destroy()
@@ -366,7 +426,7 @@ class AuthModal(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             self.current_frame,
-            text="◈ LUMINA",
+            text="◈ LIBSYS",
             font=ctk.CTkFont(family=FONT_FAMILY, size=32, weight="bold"),
             text_color=APPLE_BLUE,
         ).pack(pady=(40, 10))
@@ -375,7 +435,11 @@ class AuthModal(ctk.CTkToplevel):
         )
 
         self.email_entry = ctk.CTkEntry(
-            self.current_frame, placeholder_text="E-posta", width=260, height=36, corner_radius=6
+            self.current_frame,
+            placeholder_text="E-posta veya kullanıcı adı",
+            width=260,
+            height=36,
+            corner_radius=6,
         )
         self.email_entry.pack(pady=8)
         self.pass_entry = ctk.CTkEntry(
@@ -487,13 +551,14 @@ class CatalogView(ctk.CTkFrame):
         self.is_loading = False
         self.search_job = None
 
-        self.top_bar = ctk.CTkFrame(self, fg_color="transparent", height=80)
-        self.top_bar.pack(fill="x", padx=40, pady=(40, 10))
+        self.top_bar = GlassFrame(self, height=130)
+        self.top_bar.pack(fill="x", padx=30, pady=(30, 16))
+        self.top_bar.pack_propagate(False)
 
         title_group = ctk.CTkFrame(self.top_bar, fg_color="transparent")
-        title_group.pack(side="left")
+        title_group.pack(side="left", padx=26, pady=22)
         self.title_lbl = ctk.CTkLabel(
-            title_group, text="Kütüphaneyi Keşfet", font=ctk.CTkFont(size=28, weight="bold")
+            title_group, text="Kütüphaneyi Keşfet", font=ctk.CTkFont(size=30, weight="bold")
         )
         self.title_lbl.pack(anchor="w")
         ctk.CTkLabel(
@@ -503,22 +568,48 @@ class CatalogView(ctk.CTkFrame):
             text_color=APPLE_TEXT_MUTED,
         ).pack(anchor="w", pady=(2, 0))
 
+        stats = BookController.get_catalog_stats()
+        ctk.CTkLabel(
+            title_group,
+            text=(
+                f"{stats['titles']} eser   •   {stats['categories']} kategori   •   "
+                f"{stats['available']} erişilebilir kopya"
+            ),
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=ACCENT,
+        ).pack(anchor="w", pady=(9, 0))
+
         self.search_entry = ctk.CTkEntry(
             self.top_bar,
             placeholder_text="Kitap veya Yazar Ara...",
-            width=250,
-            height=36,
-            corner_radius=18,
-            border_color="#3A3A3C",
+            width=300,
+            height=44,
+            corner_radius=22,
+            fg_color=INPUT,
+            border_color=GLASS_BORDER,
         )
-        self.search_entry.pack(side="right")
+        self.search_entry.pack(side="right", padx=26)
         self.search_entry.bind("<KeyRelease>", self.on_search)
 
         self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self.scroll.pack(fill="both", expand=True, padx=40)
+        self.scroll.pack(fill="both", expand=True, padx=30)
 
         self.grid_frame = ctk.CTkFrame(self.scroll, fg_color="transparent")
         self.grid_frame.pack(fill="both", expand=True)
+
+        self.load_more_button = AnimatedButton(
+            self.scroll,
+            text="Daha Fazla Kitap Göster",
+            width=220,
+            height=40,
+            fg_color=GLASS_MUTED,
+            hover_color=GLASS_HOVER,
+            text_color=APPLE_TEXT,
+            border_width=1,
+            border_color=GLASS_BORDER,
+            command=self.load_books,
+        )
+        self.load_more_button.pack(pady=(8, 24))
 
         self.scroll.bind("<Configure>", self.on_resize)
         self.scroll._parent_canvas.bind("<MouseWheel>", self.on_scroll, add="+")
@@ -549,6 +640,7 @@ class CatalogView(ctk.CTkFrame):
 
     def _render_new_books(self, new_books):
         if not new_books:
+            self.load_more_button.pack_forget()
             if not self.books:
                 empty = ctk.CTkLabel(
                     self.grid_frame,
@@ -565,6 +657,10 @@ class CatalogView(ctk.CTkFrame):
         for b in new_books:
             card = CatalogCard(self.grid_frame, b, self.on_borrow)
             self.cards.append(card)
+        if len(new_books) < self.limit:
+            self.load_more_button.pack_forget()
+        elif not self.load_more_button.winfo_manager():
+            self.load_more_button.pack(pady=(8, 24))
         self.rearrange_grid()
         self.is_loading = False
 
@@ -572,12 +668,12 @@ class CatalogView(ctk.CTkFrame):
         self.rearrange_grid()
 
     def rearrange_grid(self):
-        w = self.scroll.winfo_width()
+        w = self.scroll._parent_canvas.winfo_width()
         if w < 300:
             return
-        cols = max(1, w // 280)
+        cols = max(1, w // 286)
         for i, card in enumerate(self.cards):
-            card.grid(row=i // cols, column=i % cols, padx=10, pady=15)
+            card.grid(row=i // cols, column=i % cols, padx=8, pady=15)
 
     def on_scroll(self, event):
         if self.scroll._parent_canvas.yview()[1] > 0.95:
@@ -872,16 +968,27 @@ class UserRequestView(ctk.CTkFrame):
         threading.Thread(target=_do_search, daemon=True).start()
 
     def _show_results(self, docs):
-        self.status.configure(text=f"✅ {len(docs)} sonuç.")
+        rendered = 0
         for d in docs:
             t = d.get("title", "Bilinmiyor")
-            a = d.get("author_name", ["Bilinmiyor"])[0]
-            isbn_values = d.get("isbn") or []
-            if not isbn_values:
+            authors = d.get("author_name") or ["Bilinmiyor"]
+            a = authors[0]
+            selected_isbn = first_valid_isbn(d.get("isbn"))
+            if not selected_isbn:
                 continue
-            isbn = isbn_values[0]
+            isbn = selected_isbn
             cov = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg"
             self.build_result_card(t, a, isbn, cov)
+            rendered += 1
+        if rendered:
+            self.status.configure(text=f"✓ ISBN bilgili {rendered} sonuç.")
+        else:
+            self.status.configure(text="ISBN bilgisi olan sonuç bulunamadı.")
+            ctk.CTkLabel(
+                self.scroll,
+                text="Farklı bir kitap adı veya yazar ile yeniden deneyin.",
+                text_color=APPLE_TEXT_MUTED,
+            ).pack(pady=40)
 
     def build_result_card(self, t, a, i, c_url):
         c = GlassFrame(self.scroll, height=100)
@@ -945,7 +1052,7 @@ class SettingsView(ctk.CTkFrame):
 class UserMainWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Lumina • Dijital Kütüphane")
+        self.title("LibSys • Dijital Kütüphane")
         self.geometry("1180x780")
         self.minsize(960, 680)
         ctk.set_appearance_mode("dark")
@@ -954,9 +1061,9 @@ class UserMainWindow(ctk.CTk):
         self.user = None
         self.current_view = None
 
-        self.sidebar = GlassFrame(self, corner_radius=0)
+        self.sidebar = GlassFrame(self, corner_radius=0, fg_color=SIDEBAR, border_color=BORDER)
         self.sidebar.pack(side="left", fill="y")
-        self.sidebar.configure(width=220)
+        self.sidebar.configure(width=230)
         self.sidebar.pack_propagate(False)
 
         self.content = ctk.CTkFrame(self, fg_color="transparent")
@@ -985,6 +1092,21 @@ class UserMainWindow(ctk.CTk):
         for w in self.sidebar.winfo_children():
             w.destroy()
 
+        brand = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        brand.pack(fill="x", padx=20, pady=(28, 10))
+        ctk.CTkLabel(
+            brand,
+            text="◈ LIBSYS",
+            font=ctk.CTkFont(size=22, weight="bold"),
+            text_color=APPLE_BLUE,
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            brand,
+            text="DİJİTAL KÜTÜPHANE",
+            font=ctk.CTkFont(size=9, weight="bold"),
+            text_color=APPLE_TEXT_MUTED,
+        ).pack(anchor="w", pady=(1, 0))
+
         ic_cat = get_icon("book")
         ic_req = get_icon("star")
         ic_prof = get_icon("user")
@@ -993,7 +1115,7 @@ class UserMainWindow(ctk.CTk):
 
         if self.user:
             self.prof = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-            self.prof.pack(fill="x", pady=(40, 20), padx=20)
+            self.prof.pack(fill="x", pady=(12, 20), padx=20)
             ctk.CTkLabel(self.prof, text="", image=get_icon("user", 36)).pack()
             ctk.CTkLabel(self.prof, text=self.user["name"], font=ctk.CTkFont(size=16, weight="bold")).pack(
                 pady=(5, 0)
@@ -1013,7 +1135,7 @@ class UserMainWindow(ctk.CTk):
                 font=ctk.CTkFont(size=14),
                 fg_color="transparent",
                 text_color=APPLE_TEXT,
-                hover_color=("#E5E5EA", "#3A3A3C"),
+                hover_color=GLASS_HOVER,
                 anchor="w",
                 command=self.show_catalog,
             ).pack(fill="x", padx=15, pady=5)
@@ -1024,7 +1146,7 @@ class UserMainWindow(ctk.CTk):
                 font=ctk.CTkFont(size=14),
                 fg_color="transparent",
                 text_color=APPLE_TEXT,
-                hover_color=("#E5E5EA", "#3A3A3C"),
+                hover_color=GLASS_HOVER,
                 anchor="w",
                 command=self.show_request,
             ).pack(fill="x", padx=15, pady=5)
@@ -1035,7 +1157,7 @@ class UserMainWindow(ctk.CTk):
                 font=ctk.CTkFont(size=14),
                 fg_color="transparent",
                 text_color=APPLE_ORANGE if n_count > 0 else APPLE_TEXT,
-                hover_color=("#E5E5EA", "#3A3A3C"),
+                hover_color=GLASS_HOVER,
                 anchor="w",
                 command=self.show_notifications,
             ).pack(fill="x", padx=15, pady=5)
@@ -1046,7 +1168,7 @@ class UserMainWindow(ctk.CTk):
                 font=ctk.CTkFont(size=14),
                 fg_color="transparent",
                 text_color=APPLE_TEXT,
-                hover_color=("#E5E5EA", "#3A3A3C"),
+                hover_color=GLASS_HOVER,
                 anchor="w",
                 command=self.show_profile,
             ).pack(fill="x", padx=15, pady=5)
@@ -1057,7 +1179,7 @@ class UserMainWindow(ctk.CTk):
                 font=ctk.CTkFont(size=14),
                 fg_color="transparent",
                 text_color=APPLE_TEXT,
-                hover_color=("#E5E5EA", "#3A3A3C"),
+                hover_color=GLASS_HOVER,
                 anchor="w",
                 command=self.show_settings,
             ).pack(fill="x", padx=15, pady=5)
@@ -1069,13 +1191,13 @@ class UserMainWindow(ctk.CTk):
                 font=ctk.CTkFont(size=14),
                 fg_color="transparent",
                 text_color=APPLE_RED,
-                hover_color=("#E5E5EA", "#3A3A3C"),
+                hover_color=GLASS_HOVER,
                 anchor="w",
                 command=self.logout,
             ).pack(side="bottom", fill="x", padx=15, pady=30)
         else:
             self.prof = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-            self.prof.pack(fill="x", pady=(40, 20), padx=20)
+            self.prof.pack(fill="x", pady=(12, 20), padx=20)
             ctk.CTkLabel(self.prof, text="", image=get_icon("user", 36)).pack()
             ctk.CTkLabel(self.prof, text="Ziyaretçi", font=ctk.CTkFont(size=16, weight="bold")).pack(
                 pady=(5, 0)
@@ -1088,7 +1210,7 @@ class UserMainWindow(ctk.CTk):
                 font=ctk.CTkFont(size=14),
                 fg_color="transparent",
                 text_color=APPLE_TEXT,
-                hover_color=("#E5E5EA", "#3A3A3C"),
+                hover_color=GLASS_HOVER,
                 anchor="w",
                 command=self.show_catalog,
             ).pack(fill="x", padx=15, pady=5)
@@ -1099,7 +1221,7 @@ class UserMainWindow(ctk.CTk):
                 font=ctk.CTkFont(size=14),
                 fg_color="transparent",
                 text_color=APPLE_TEXT,
-                hover_color=("#E5E5EA", "#3A3A3C"),
+                hover_color=GLASS_HOVER,
                 anchor="w",
                 command=self.show_settings,
             ).pack(fill="x", padx=15, pady=5)
@@ -1110,7 +1232,7 @@ class UserMainWindow(ctk.CTk):
                 font=ctk.CTkFont(size=14),
                 fg_color="transparent",
                 text_color=APPLE_BLUE,
-                hover_color=("#E5E5EA", "#3A3A3C"),
+                hover_color=GLASS_HOVER,
                 anchor="w",
                 command=lambda: AuthModal(self, self.on_login_success),
             ).pack(side="bottom", fill="x", padx=15, pady=30)

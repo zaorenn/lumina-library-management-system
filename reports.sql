@@ -1,4 +1,4 @@
--- Lumina Kütüphane Yönetim Sistemi
+-- LibSys Kütüphane Yönetim Sistemi
 -- Teslim ve raporlama için örnek JOIN / GROUP BY sorguları.
 
 -- 1) Aktif ödünçler ve kalan gün sayısı

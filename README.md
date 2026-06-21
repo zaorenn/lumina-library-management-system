@@ -1,6 +1,6 @@
 <div align="center">
 
-# ◈ Lumina
+# ◈ LibSys
 
 ### Hikâyeler burada ışık bulur.
 
@@ -9,27 +9,41 @@ Python, SQLite ve CustomTkinter ile geliştirilen; üye deneyimi ile yönetim op
 ![Python](https://img.shields.io/badge/Python-3.10%2B-6857E5?style=flat-square&logo=python&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-3-2DD4BF?style=flat-square&logo=sqlite&logoColor=white)
 ![CustomTkinter](https://img.shields.io/badge/UI-CustomTkinter-8B7CFF?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-20%20passed-168B75?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-25%20passed-168B75?style=flat-square)
 
 </div>
 
 ## Proje özeti
 
-Lumina, Faz 2 **Proje 1 – Kütüphane Yönetim Sistemi** için **Python + SQL + GitHub** teknoloji kombinasyonuyla hazırlanmıştır. Uygulama kitap, üye ve ödünç işlemlerinin CRUD akışlarını; güvenli kimlik doğrulamayı, stok/ceza otomasyonunu ve açıklayıcı testleri tek projede sunar.
+LibSys, Faz 2 **Proje 1 – Kütüphane Yönetim Sistemi** için **Python + SQL + GitHub** teknoloji kombinasyonuyla hazırlanmıştır. Uygulama kitap, üye ve ödünç işlemlerinin CRUD akışlarını; güvenli kimlik doğrulamayı, stok/ceza otomasyonunu ve açıklayıcı testleri tek projede sunar.
 
 İki farklı masaüstü deneyimi vardır:
 
-- **Üye uygulaması:** katalog, anlık arama, kitap detayları, ödünç/iade, bildirimler, kitap isteği, profil talebi ve tema seçimi.
-- **Yönetim stüdyosu:** gösterge paneli, kitap/üye CRUD, üyelik onayı, tüm ödünç geçmişi, manuel iade, Open Library entegrasyonu ve talep yönetimi.
+- **Üye uygulaması:** 48 kapaklı ve özetli başlangıç kataloğu, anlık arama, kitap detayları, ödünç/iade, bildirimler, kitap isteği, profil talebi ve tema seçimi.
+- **Yönetim stüdyosu:** canlı gösterge paneli, kitap/üye CRUD, üyelik onayı, tüm ödünç geçmişi, manuel iade, Open Library entegrasyonu, talep yönetimi ve veri bakım araçları.
 
 ## Neden farklı?
 
-- **Aurora tasarım sistemi:** koyu lacivert zemin, mor vurgu, turkuaz başarı ve mercan uyarı renklerinden oluşan Lumina'ya özel palet.
+- **Neutral Glass tasarım sistemi:** koyu modda siyaha yakın cam yüzeyler, açık modda buzlu beyaz katmanlar, yumuşak gri sınırlar ve ölçülü turkuaz durum vurguları.
+- **Hazır ve gerçek katalog:** ilk açılışta otomatik eklenen 48 seçili eser; benzersiz ISBN, gerçek Open Library kapağı ve Türkçe özet içerir.
 - **Geçmişi koruyan arşivleme:** kitap ve üyeler doğrudan yok edilmez; aktif ödünç kontrolünden sonra arşivlenir.
 - **Veritabanı seviyesinde güvence:** stok düşürme, iade, gecikme cezası ve denetim günlüğü SQLite trigger'larıyla korunur.
 - **Eşzamanlı işlem güvenliği:** ödünç işlemleri `BEGIN IMMEDIATE`, busy timeout ve atomik transaction kullanır.
 - **Savunmacı doğrulama:** ISBN-10/13 checksum, e-posta, telefon, parola, yıl, URL ve kopya sayısı doğrulanır.
 - **Dış servis zarif düşüşü:** Open Library veya kapak servisi erişilemezse temel kütüphane işlevleri çalışmaya devam eder.
+
+## Hazır katalog
+
+Katalog ilk `main.py` veya `admin_app.py` çalıştırmasında otomatik hazırlanır; ayrıca komut çalıştırmak gerekmez. Başlangıç verisi:
+
+- Tam olarak 48 seçili eser içerir.
+- Her kitapta geçerli ISBN-10/13 checksum, kategori, yayın yılı ve en az 100 karakterlik Türkçe özet bulunur.
+- Her kapak benzersiz Open Library ISBN adresine bağlıdır; 48 adresin tamamı görsel içerik yanıtıyla doğrulanmıştır.
+- Yükleme idempotenttir: uygulamayı tekrar açmak kopya kitap üretmez.
+- Üye kataloğu sayfalı/yükle-devam akışıyla yöneticinin gördüğü aktif envanterin tamamını gösterir.
+- Mevcut kayıtlardaki kapak ve özetler yönetici **Ayarlar → Katalog Metadatasını Onar** işlemiyle geri yüklenebilir.
+
+Kapaklar internetten yüklenir. Ağ yoksa uygulama kitap bilgilerini ve yerel yer tutucuyu göstermeye devam eder.
 
 ## Özellik matrisi
 
@@ -72,8 +86,8 @@ Arayüz yalnız kullanıcı etkileşimini yönetir; iş kuralları controller ka
 ### 1. Ortamı hazırlayın
 
 ```bash
-git clone <depo-adresi>
-cd <depo-klasoru>
+git clone https://github.com/zaorenn/libsys-library-management-system.git
+cd libsys-library-management-system
 python -m venv .venv
 ```
 
@@ -91,13 +105,13 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-### 2. Demo kataloğunu yükleyin
+### 2. İsteğe bağlı demo hesabını hazırlayın
 
 ```bash
 python seed_db.py
 ```
 
-Komut mevcut verileri silmez; eksik demo hesabını ve kitapları idempotent biçimde ekler. Tamamen temiz demo veritabanı istenirse açıkça şu komut kullanılır:
+Katalog zaten otomatik oluşur. Bu komut yalnız değerlendirme için onaylı demo üyeyi de hazırlar ve mevcut verileri silmez. Tamamen temiz demo veritabanı istenirse açıkça şu komut kullanılır:
 
 ```bash
 python seed_db.py --reset
@@ -125,14 +139,16 @@ python admin_app.py
 
 | Rol | Kullanıcı | Parola |
 |---|---|---|
-| Yönetici | `admin` | `Admin123!` |
-| Üye | `uye@lumina.local` | `Uye12345!` |
+| Yönetici | `admin` | `admin123` |
+| Deneme üyesi | `uye` | `uye123` |
+
+Üye giriş alanı hem e-posta hem kullanıcı adı kabul eder. Böylece değerlendiren kişi `python seed_db.py` sonrasında yukarıdaki kısa bilgilerle doğrudan giriş yapabilir.
 
 İlk veritabanı oluşturulmadan önce yönetici bilgileri ortam değişkenleriyle değiştirilebilir:
 
 ```powershell
-$env:LUMINA_ADMIN_USERNAME = "yonetici"
-$env:LUMINA_ADMIN_PASSWORD = "GucluBirParola123!"
+$env:LIBSYS_ADMIN_USERNAME = "yonetici"
+$env:LIBSYS_ADMIN_PASSWORD = "GucluBirParola123!"
 python admin_app.py
 ```
 
@@ -151,10 +167,29 @@ Tüm kontroller:
 ```bash
 python -m compileall -q .
 ruff check .
-pytest -q
+python -m pytest -q
+python -m tools.verify_catalog --online
+python -m tools.smoke_gui
 ```
 
-Test paketi geçici veritabanları kullanır; `library.db` dosyanıza dokunmaz. Ayrıntılı kapsam [test planında](docs/TEST_PLAN.md) yer alır. Aynı kontroller her push ve pull request'te GitHub Actions tarafından çalıştırılır.
+Test paketi geçici veritabanları kullanır; `libsys.db` dosyanıza dokunmaz. `verify_catalog` 48 uzak kapağı, `smoke_gui` ise ekran ortamında 5 üye ve 10 yönetici görünümünü açarak doğrular. Ayrıntılı kapsam [test planında](docs/TEST_PLAN.md) yer alır. Otomatik kontroller her push ve pull request'te GitHub Actions tarafından çalıştırılır.
+
+## Yönetim stüdyosundaki çalışan araçlar
+
+| Ekran | İşlev |
+|---|---|
+| Genel Bakış | Canlı eser/kopya/üye/ödünç/bekleyen işlem metrikleri ve son hareketler |
+| Onay Bekleyenler | Seçili üyeyi açık buton veya çift tıklamayla onaylama |
+| Kitaplar | Arama, ekleme, düzenleme, kapak/özet güncelleme ve geçmişi koruyan arşivleme |
+| İnternetten Ekle | Open Library araması, geçerli ISBN seçimi ve kapaklı ekleme |
+| İstenen Kitaplar | Üye isteğini kataloğa ekleme veya bildirimli reddetme |
+| Üyeler | Arama, manuel aktif üye oluşturma ve güvenli arşivleme |
+| Profil İstekleri | E-posta çakışma kontrollü onay/ret ve üyeye bildirim |
+| Tüm Geçmiş | Aktif ve tamamlanmış ödünçleri izleme, manuel iade |
+| Profilim | Yönetici bilgisi ve güçlü parola güncelleme |
+| Ayarlar | Açık/koyu tema, SQLite bütünlük denetimi ve katalog metadata onarımı |
+
+Yönetici kenar çubuğunda ayrıca güvenli **Oturumu Kapat** işlemi bulunur.
 
 ## SQL tasarımı
 
@@ -162,7 +197,7 @@ Ana tablolar:
 
 - `admins`, `members`, `books`, `borrows`
 - `book_requests`, `profile_requests`, `notifications`
-- `reviews`, `wishlist`, `reservations`, `audit_logs`
+- `audit_logs`
 
 Önemli kurallar:
 
@@ -178,7 +213,7 @@ Tam şema [schema.sql](schema.sql), JOIN/GROUP BY rapor örnekleri [reports.sql]
 ## Proje yapısı
 
 ```text
-Lumina/
+LibSys/
 ├── main.py                     # Üye uygulaması
 ├── admin_app.py                # Yönetim stüdyosu
 ├── seed_db.py                  # İdempotent demo veri yükleyici
@@ -191,26 +226,32 @@ Lumina/
 │   ├── library.py              # Kitap, üye, ödünç ve talep iş kuralları
 │   └── validators.py           # Merkezi veri doğrulama
 ├── models/
-│   └── database.py             # Bağlantı, transaction ve şema geçişleri
+│   ├── catalog.py              # 48 kapaklı ve özetli başlangıç kataloğu
+│   └── database.py             # Bağlantı, WAL transaction ve şema geçişleri
 ├── views/
-│   ├── theme.py                # Lumina Aurora tasarım sistemi
+│   ├── theme.py                # LibSys Neutral Glass tasarım sistemi
 │   ├── ui.py                   # Üye arayüzü
 │   └── admin_ui.py             # Yönetici arayüzü
 ├── tests/
 │   ├── test_core.py            # İş kuralı entegrasyon testleri
+│   ├── test_catalog.py         # Katalog bütünlüğü ve idempotent yükleme
 │   └── test_sql_artifacts.py   # SQL teslim dosyası testleri
+├── tools/
+│   ├── verify_catalog.py       # ISBN/özet/uzak kapak doğrulaması
+│   └── smoke_gui.py            # 15 ekranlık gerçek GUI duman testi
 ├── docs/
 │   └── TEST_PLAN.md            # Test kapsamı ve kabul ölçütleri
 └── .github/workflows/tests.yml # CI kalite kapısı
 ```
 
-`library.db` ilk çalıştırmada otomatik oluşur ve kişisel veri içerebileceği için Git'e eklenmez.
+`libsys.db` ilk çalıştırmada otomatik oluşur ve kişisel veri içerebileceği için Git'e eklenmez.
 
 ## Güvenlik notları
 
 - Parolalar düz metin tutulmaz; bcrypt ile salt'lı hash saklanır.
 - SQL sorguları parametreli çalışır.
 - Görsel indirmeleri 5 MB ile sınırlıdır ve ağ çağrıları timeout kullanır.
+- Üye kataloğu başka üyelerin kimlik bilgilerini göstermez.
 - Üye bildirimi sahiplik denetimiyle okundu işaretlenir.
 - Hassas yerel dosyalar ve veritabanları `.gitignore` kapsamındadır.
 
@@ -226,4 +267,4 @@ Lumina/
 
 ---
 
-Lumina, eğitim projesi sınırlarının ötesinde; izlenebilir, test edilebilir ve güvenli bir masaüstü kütüphane uygulaması örneği olarak tasarlanmıştır.
+LibSys, eğitim projesi sınırlarının ötesinde; izlenebilir, test edilebilir ve güvenli bir masaüstü kütüphane uygulaması örneği olarak tasarlanmıştır.

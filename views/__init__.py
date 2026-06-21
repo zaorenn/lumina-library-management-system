@@ -1,1 +1,1 @@
-"""Lumina CustomTkinter views."""
+"""LibSys CustomTkinter views."""

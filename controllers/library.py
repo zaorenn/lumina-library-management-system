@@ -128,6 +128,18 @@ class BookController:
             ).fetchall()
 
     @staticmethod
+    def get_catalog_stats():
+        with db_session() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*), COALESCE(SUM(available_copies), 0),
+                       COUNT(DISTINCT category)
+                FROM books WHERE is_active = 1
+                """
+            ).fetchone()
+        return {"titles": row[0], "available": row[1], "categories": row[2]}
+
+    @staticmethod
     def delete_book(book_id):
         try:
             with db_session(immediate=True) as connection:
@@ -458,6 +470,53 @@ class BorrowController:
                 """
             ).fetchone()[0]
         return total_books, active_borrows, overdue_books
+
+    @staticmethod
+    def get_admin_overview():
+        with db_session() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM books WHERE is_active = 1),
+                    (SELECT COALESCE(SUM(total_copies), 0) FROM books WHERE is_active = 1),
+                    (SELECT COUNT(*) FROM borrows WHERE actual_return_date IS NULL),
+                    (SELECT COUNT(*) FROM borrows
+                     WHERE actual_return_date IS NULL
+                       AND return_date < DATE('now', 'localtime')),
+                    (SELECT COUNT(*) FROM members
+                     WHERE is_active = 1 AND is_approved = 1),
+                    (SELECT COUNT(*) FROM members
+                     WHERE is_active = 1 AND is_approved = 0),
+                    (SELECT COUNT(*) FROM book_requests),
+                    (SELECT COUNT(*) FROM profile_requests WHERE status = 'PENDING')
+                """
+            ).fetchone()
+        return {
+            "titles": row[0],
+            "copies": row[1],
+            "active_borrows": row[2],
+            "overdue": row[3],
+            "members": row[4],
+            "pending_members": row[5],
+            "book_requests": row[6],
+            "profile_requests": row[7],
+        }
+
+    @staticmethod
+    def get_recent_activity(limit=6):
+        try:
+            safe_limit = min(max(int(limit), 1), 20)
+        except (TypeError, ValueError):
+            safe_limit = 6
+        with db_session() as connection:
+            return connection.execute(
+                """
+                SELECT action_type, description, action_date
+                FROM audit_logs
+                ORDER BY id DESC LIMIT ?
+                """,
+                (safe_limit,),
+            ).fetchall()
 
 
 class RequestController:

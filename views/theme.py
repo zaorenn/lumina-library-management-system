@@ -1,27 +1,35 @@
-"""Lumina's shared visual language and filesystem-safe asset helpers."""
+"""LibSys shared visual language and filesystem-safe asset helpers."""
 
 from pathlib import Path
 
-APP_NAME = "Lumina"
+APP_NAME = "LibSys"
 TAGLINE = "Hikâyeler burada ışık bulur."
 ASSET_DIR = Path(__file__).resolve().parent.parent / "assets"
 ICON_DIR = ASSET_DIR / "icons"
 
-# Aurora palette: accessible contrast in both appearance modes.
-BACKGROUND = ("#F5F7FC", "#080D1A")
-PANEL = ("#FFFFFF", "#11192B")
-PANEL_ELEVATED = ("#EEF2FF", "#18233A")
-PRIMARY = ("#6857E5", "#8B7CFF")
-PRIMARY_HOVER = ("#5545C7", "#7565EA")
-SUCCESS = ("#168B75", "#2DD4BF")
-DANGER = ("#D1435B", "#FB7185")
-WARNING = ("#B86E00", "#FBBF24")
-TEXT = ("#172033", "#F7F8FC")
-TEXT_MUTED = ("#687086", "#9AA6BD")
-BORDER = ("#DDE3F0", "#263552")
-SIDEBAR = ("#EEF2FF", "#0D1424")
+# Neutral Glass palette: frosted whites by day, near-black glass by night.
+BACKGROUND = ("#E9EDF1", "#050607")
+PANEL = ("#F7F9FA", "#0B0E11")
+PANEL_ELEVATED = ("#EFF3F5", "#14191E")
+GLASS = ("#FBFCFD", "#101419")
+GLASS_MUTED = ("#EDF1F3", "#171D22")
+GLASS_HOVER = ("#E1E7EA", "#222A30")
+PRIMARY = ("#2F5960", "#258E88")
+PRIMARY_HOVER = ("#24464C", "#31A49D")
+ACCENT = ("#126F70", "#65D7CF")
+SUCCESS = ("#167361", "#48CFAE")
+DANGER = ("#B94152", "#F07080")
+WARNING = ("#986313", "#E8B45D")
+TEXT = ("#172026", "#EDF3F4")
+TEXT_MUTED = ("#657178", "#95A2A7")
+BORDER = ("#C9D1D5", "#293137")
+GLASS_BORDER = ("#BDC8CC", "#364249")
+INPUT = ("#F3F6F7", "#090C0E")
+SIDEBAR = ("#E4E9EB", "#080B0D")
 
 FONT_FAMILY = "Segoe UI"
+RADIUS_LARGE = 22
+RADIUS_MEDIUM = 16
 
 
 def icon_path(filename: str) -> Path:

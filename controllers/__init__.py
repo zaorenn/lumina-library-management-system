@@ -1,1 +1,1 @@
-"""Lumina application controllers."""
+"""LibSys application controllers."""

@@ -1,4 +1,4 @@
-"""Integration tests for Lumina's SQLite-backed business rules."""
+"""Integration tests for LibSys SQLite-backed business rules."""
 
 from __future__ import annotations
 
@@ -17,21 +17,26 @@ from controllers.library import (
     ProfileRequestController,
     RequestController,
 )
-from controllers.validators import isbn13_from_body
+from controllers.validators import first_valid_isbn, isbn13_from_body
 
 
 @pytest.fixture(autouse=True)
 def isolated_database(tmp_path, monkeypatch):
-    database_path = tmp_path / "lumina-test.db"
+    database_path = tmp_path / "libsys-test.db"
     monkeypatch.setattr(models.database, "DB_PATH", database_path)
     monkeypatch.setattr(models.database, "DEFAULT_ADMIN_USERNAME", "admin")
-    monkeypatch.setattr(models.database, "DEFAULT_ADMIN_PASSWORD", "Admin123!")
-    models.database.init_db()
+    monkeypatch.setattr(models.database, "DEFAULT_ADMIN_PASSWORD", "admin123")
+    models.database.init_db(seed_catalog=False)
     yield database_path
 
 
 def valid_isbn(number=1):
     return isbn13_from_body(f"978625{number:06d}")
+
+
+def test_external_isbn_selection_skips_invalid_values():
+    assert first_valid_isbn(["invalid", "12345", "9780451524935"]) == "9780451524935"
+    assert first_valid_isbn(None) is None
 
 
 def add_book(number=1, copies=3, title=None):
@@ -66,7 +71,7 @@ def test_database_enables_foreign_keys_and_has_current_schema(isolated_database)
     connection = models.database.get_connection()
     try:
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         triggers = {
             row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'trigger'")
@@ -77,7 +82,7 @@ def test_database_enables_foreign_keys_and_has_current_schema(isolated_database)
 
 
 def test_default_admin_login_uses_hashed_password():
-    success, admin = AuthController.login_admin("admin", "Admin123!")
+    success, admin = AuthController.login_admin("admin", "admin123")
     assert success is True
     assert admin["name"] == "Sistem Yöneticisi"
     assert AuthController.login_admin("admin", "wrong-password")[0] is False
@@ -87,7 +92,7 @@ def test_default_admin_login_uses_hashed_password():
         stored = connection.execute("SELECT password_hash FROM admins").fetchone()[0]
     finally:
         connection.close()
-    assert stored != "Admin123!"
+    assert stored != "admin123"
     assert stored.startswith("$2")
 
 
@@ -324,3 +329,24 @@ def test_database_trigger_rejects_direct_out_of_stock_insert():
     finally:
         connection.rollback()
         connection.close()
+
+
+def test_admin_overview_and_audit_activity_are_consistent():
+    book_id = add_book(copies=4)
+    member_id = add_member()
+    assert BorrowController.borrow_book(book_id, member_id)[0] is True
+
+    catalog = BookController.get_catalog_stats()
+    assert catalog == {"titles": 1, "available": 3, "categories": 1}
+
+    overview = BorrowController.get_admin_overview()
+    assert overview["titles"] == 1
+    assert overview["copies"] == 4
+    assert overview["active_borrows"] == 1
+    assert overview["members"] == 1
+    assert overview["pending_members"] == 0
+
+    activities = BorrowController.get_recent_activity()
+    assert activities
+    assert activities[0][0] == "BORROW"
+    assert any(action == "CREATE" for action, _, _ in activities)

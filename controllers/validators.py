@@ -76,6 +76,19 @@ def isbn(value: object) -> str:
     raise ValidationError("Geçerli bir ISBN-10 veya ISBN-13 girin.")
 
 
+def first_valid_isbn(values: object) -> str | None:
+    """Return the first valid ISBN from an external API result list."""
+
+    if not isinstance(values, (list, tuple)):
+        return None
+    for value in values:
+        try:
+            return isbn(value)
+        except ValidationError:
+            continue
+    return None
+
+
 def year(value: object) -> int:
     try:
         parsed = int(value)
