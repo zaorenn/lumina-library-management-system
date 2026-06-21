@@ -18,13 +18,14 @@ Bu belge otomatik testlerin kapsamını ve teslim öncesi uygulanacak kısa aray
 | Gecikme | Geciken gün başına 5 TL ceza hesabı |
 | Talepler | Tekrarlanan kitap/profil talebi ve e-posta çakışması |
 | Bildirim | Bildirimin yalnız sahibi tarafından okundu işaretlenebilmesi |
-| Hazır katalog | 48 benzersiz ISBN/kapak, dolu özet, idempotent yükleme ve metadata onarımı |
+| Hazır katalog | 80 benzersiz ISBN/kapak, dolu özet, idempotent yükleme ve metadata onarımı |
+| Çevrimiçi arama | Open Library kapak filtresi, Google Books yedeği, önbellek ve ISBN tekilleştirme |
 | Yönetici özeti | Eser, kopya, üye, bekleyen işlem ve audit hareketlerinin tutarlılığı |
 
 ## Otomatik GUI ve kapak kontrolleri
 
-- `python -m tools.smoke_gui`: internet çağrısı yapmadan 5 üye ve 10 yönetici ekranını gerçek CustomTkinter widget ağacında açar; 48 katalog satırını ve tema geçişini doğrular.
-- `python -m tools.verify_catalog --online`: 48 ISBN'i, özet uzunluğunu ve Open Library kapaklarının görsel yanıt verdiğini doğrular.
+- `python -m tools.smoke_gui`: internet çağrısı yapmadan 5 üye ve 10 yönetici ekranını gerçek CustomTkinter widget ağacında açar; 80 katalog satırını, fare tekerleğiyle kaydırmayı ve tema geçişini doğrular.
+- `python -m tools.verify_catalog --online`: 80 ISBN'i, özet uzunluğunu ve Open Library kapaklarının görsel yanıt verdiğini doğrular.
 
 ## Manuel arayüz duman testi
 
@@ -44,4 +45,4 @@ Teslim öncesinde şu akışlar iki uygulamada bir kez uygulanır:
 - `python -m compileall -q .`: sözdizimi hatası yok.
 - `PRAGMA integrity_check`: `ok`.
 - GUI smoke: 5 üye + 10 yönetici ekranı başarılı.
-- Kapak kontrolü: 48/48 görsel erişilebilir.
+- Kapak kontrolü: 80/80 görsel erişilebilir.

@@ -11,9 +11,9 @@ def test_default_catalog_is_complete_and_idempotent(tmp_path, monkeypatch):
     monkeypatch.setattr(models.database, "DB_PATH", tmp_path / "catalog.db")
     monkeypatch.setattr(models.database, "DEFAULT_ADMIN_PASSWORD", "admin123")
 
-    assert len(DEFAULT_CATALOG) == 48
-    assert len({book.isbn for book in DEFAULT_CATALOG}) == 48
-    assert len({book.cover_url for book in DEFAULT_CATALOG}) == 48
+    assert len(DEFAULT_CATALOG) == 80
+    assert len({book.isbn for book in DEFAULT_CATALOG}) == 80
+    assert len({book.cover_url for book in DEFAULT_CATALOG}) == 80
     assert all(isbn(book.isbn) == book.isbn for book in DEFAULT_CATALOG)
     assert all(len(book.summary) >= 100 for book in DEFAULT_CATALOG)
 
@@ -31,7 +31,7 @@ def test_default_catalog_is_complete_and_idempotent(tmp_path, monkeypatch):
     finally:
         connection.close()
 
-    assert len(rows) == 48
+    assert len(rows) == 80
     assert all(description.strip() for _, description, _, _, _ in rows)
     assert all(url.startswith("https://covers.openlibrary.org/") for _, _, url, _, _ in rows)
     assert all(total == available == 4 for _, _, _, total, available in rows)

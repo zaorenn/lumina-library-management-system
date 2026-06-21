@@ -26,6 +26,7 @@ def isolated_database(tmp_path, monkeypatch):
     monkeypatch.setattr(models.database, "DB_PATH", database_path)
     monkeypatch.setattr(models.database, "DEFAULT_ADMIN_USERNAME", "admin")
     monkeypatch.setattr(models.database, "DEFAULT_ADMIN_PASSWORD", "admin123")
+    monkeypatch.setattr(models.database, "DEMO_MEMBER_ENABLED", False)
     models.database.init_db(seed_catalog=False)
     yield database_path
 
@@ -71,7 +72,7 @@ def test_database_enables_foreign_keys_and_has_current_schema(isolated_database)
     connection = models.database.get_connection()
     try:
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         triggers = {
             row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'trigger'")

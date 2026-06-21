@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import argparse
 
-import bcrypt
-
 from models.catalog import DEFAULT_CATALOG
-from models.database import get_connection, init_db
+from models.database import ensure_demo_member, get_connection, init_db
 
 RESET_ORDER = (
     "notifications",
@@ -44,28 +42,6 @@ def _reset_database() -> None:
         connection.close()
 
 
-def _ensure_demo_member() -> None:
-    connection = get_connection()
-    try:
-        exists = connection.execute(
-            "SELECT 1 FROM members WHERE username = ? COLLATE NOCASE",
-            ("uye",),
-        ).fetchone()
-        if not exists:
-            password_hash = bcrypt.hashpw(b"uye123", bcrypt.gensalt()).decode("utf-8")
-            connection.execute(
-                """
-                INSERT INTO members
-                    (name, username, email, phone, password_hash, is_approved, is_active)
-                VALUES (?, ?, ?, ?, ?, 1, 1)
-                """,
-                ("Deneme Üyesi", "uye", "uye@libsys.local", "+90 555 123 45 67", password_hash),
-            )
-        connection.commit()
-    finally:
-        connection.close()
-
-
 def seed(*, reset: bool = False) -> None:
     """Prepare demo content, preserving existing data unless reset is explicit."""
 
@@ -75,7 +51,7 @@ def seed(*, reset: bool = False) -> None:
         _reset_database()
 
     init_db(seed_catalog=True)
-    _ensure_demo_member()
+    ensure_demo_member(reset_password=True)
     print(f"{len(DEFAULT_CATALOG)} kapaklı ve özetli katalog kitabı hazır.")
     print("Demo hesapları: admin / admin123 ve uye / uye123")
 

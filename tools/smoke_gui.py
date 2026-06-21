@@ -8,6 +8,7 @@ import customtkinter as ctk
 
 import models.database
 from controllers.library import MemberController
+from models.catalog import DEFAULT_CATALOG
 
 SMOKE_DATABASE = Path.cwd() / ".libsys-gui-smoke.db"
 
@@ -37,11 +38,16 @@ def _exercise_user_app() -> int:
     app.update_idletasks()
     assert isinstance(app.current_view, ui.CatalogView)
     assert len(app.current_view.books) == 20
-    while len(app.current_view.books) < 48:
+    while len(app.current_view.books) < len(DEFAULT_CATALOG):
         app.current_view.load_books()
-    assert len(app.current_view.books) == 48
+    assert len(app.current_view.books) == len(DEFAULT_CATALOG)
     app.current_view.rearrange_grid()
     assert int(app.current_view.cards[2].grid_info()["column"]) == 2
+    canvas = app.current_view.scroll._parent_canvas
+    before_scroll = canvas.yview()[0]
+    app.event_generate("<MouseWheel>", delta=-120)
+    app.update_idletasks()
+    assert canvas.yview()[0] > before_scroll
     app.withdraw()
 
     member = MemberController.get_all_members("smoke@example.com")[0]
@@ -102,7 +108,7 @@ def _exercise_admin_app() -> int:
         app.update_idletasks()
         assert screen.winfo_exists()
         if isinstance(screen, admin_ui.AdminBooksView):
-            assert len(screen.tree.get_children()) == 48
+            assert len(screen.tree.get_children()) == len(DEFAULT_CATALOG)
             first_item = screen.tree.get_children()[0]
             assert len(screen.tree.item(first_item, "values")) == 10
         if isinstance(screen, admin_ui.AdminSettingsView):

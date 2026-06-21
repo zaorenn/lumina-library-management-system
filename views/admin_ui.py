@@ -3,7 +3,6 @@ import threading
 from tkinter import messagebox, ttk
 
 import customtkinter as ctk
-import requests
 from PIL import Image
 
 from controllers.auth import AuthController
@@ -14,8 +13,8 @@ from controllers.library import (
     NotificationController,
     RequestController,
 )
-from controllers.validators import first_valid_isbn
 from models.database import check_integrity, refresh_catalog_metadata
+from services.book_api import BookServiceError, OnlineBook, search_books
 from views.theme import (
     ACCENT,
     BACKGROUND,
@@ -423,35 +422,25 @@ class EditBookModal(ctk.CTkToplevel):
 
         def _fetch():
             try:
-                r = requests.get(
-                    "https://openlibrary.org/search.json",
-                    params={"q": t, "limit": 1},
-                    timeout=5,
-                )
-                r.raise_for_status()
-                docs = r.json().get("docs", [])
-                key = docs[0].get("key") if docs else None
-                if key:
-                    r2 = requests.get(f"https://openlibrary.org{key}.json", timeout=5)
-                    r2.raise_for_status()
-                    desc = r2.json().get("description", "Bu kitap için özet bulunamadı.")
-                    if isinstance(desc, dict):
-                        desc = desc.get("value", "")
-                    self.after(
-                        0, lambda d=desc: (self.desc_txt.delete("0.0", "end"), self.desc_txt.insert("0.0", d))
-                    )
-                else:
-                    self.after(
-                        0,
-                        lambda: (
-                            self.desc_txt.delete("0.0", "end"),
-                            self.desc_txt.insert("0.0", "Sonuç bulunamadı."),
-                        ),
-                    )
-            except requests.RequestException:
+                results = search_books(t, limit=1)
+                if not results:
+                    raise BookServiceError("Bu kitap için çevrimiçi kayıt bulunamadı.")
+                book = results[0]
+
+                def _apply_result():
+                    self.desc_txt.delete("0.0", "end")
+                    self.desc_txt.insert("0.0", book.description)
+                    self.cover.delete(0, "end")
+                    self.cover.insert(0, book.cover_url)
+
+                self.after(0, _apply_result)
+            except BookServiceError as exc:
                 self.after(
                     0,
-                    lambda: (self.desc_txt.delete("0.0", "end"), self.desc_txt.insert("0.0", "Hata oluştu.")),
+                    lambda message=str(exc): (
+                        self.desc_txt.delete("0.0", "end"),
+                        self.desc_txt.insert("0.0", message),
+                    ),
                 )
 
         threading.Thread(target=_fetch, daemon=True).start()
@@ -570,8 +559,14 @@ class AdminMembersView(ctk.CTkFrame):
         self.t_frame = GlassFrame(self)
         self.t_frame.pack(fill="both", expand=True, padx=40, pady=(0, 40))
         apply_treeview_style()
-        self.tree = ttk.Treeview(self.t_frame, columns=("id", "n", "e", "p", "d"), show="headings")
-        for c, h in zip(self.tree["columns"], ["ID", "Ad Soyad", "E-posta", "Telefon", "Tarih"], strict=True):
+        self.tree = ttk.Treeview(
+            self.t_frame, columns=("id", "n", "e", "p", "d", "u"), show="headings"
+        )
+        for c, h in zip(
+            self.tree["columns"],
+            ["ID", "Ad Soyad", "E-posta", "Telefon", "Tarih", "Kullanıcı Adı"],
+            strict=True,
+        ):
             self.tree.heading(c, text=h)
         self.tree.pack(fill="both", expand=True, padx=20, pady=20)
         self.tree.bind("<Double-1>", self.on_double)
@@ -718,7 +713,10 @@ class AdminOpenLibraryView(ctk.CTkFrame):
         self.top.pack_propagate(False)
 
         self.ent = ctk.CTkEntry(
-            self.top, placeholder_text="🔍 Kitap Adı, ISBN veya Yazar (OpenLibrary)...", width=500, height=45
+            self.top,
+            placeholder_text="🔍 Kitap adı, ISBN veya yazar (Open Library + Google Books)...",
+            width=500,
+            height=45,
         )
         self.ent.pack(side="left", padx=20, pady=20)
         AnimatedButton(self.top, text="Bul", width=100, height=45, command=self.search).pack(side="left")
@@ -739,45 +737,34 @@ class AdminOpenLibraryView(ctk.CTkFrame):
 
         def _do_search():
             try:
-                r = requests.get(
-                    "https://openlibrary.org/search.json",
-                    params={"q": q, "limit": 10},
-                    timeout=10,
-                )
-                r.raise_for_status()
-                docs = r.json().get("docs", [])
-                self.after(0, self._show_results, docs)
-            except requests.RequestException:
-                self.after(0, lambda: self.status.configure(text="❌ Hata oluştu."))
+                books = search_books(q, limit=12)
+                self.after(0, self._show_results, books)
+            except BookServiceError as exc:
+                self.after(0, lambda message=str(exc): self.status.configure(text=f"❌ {message}"))
 
         threading.Thread(target=_do_search, daemon=True).start()
 
-    def _show_results(self, docs):
-        self.status.configure(text=f"✅ {len(docs)} sonuç bulundu.")
-        rendered = 0
-        for d in docs:
-            t = d.get("title", "Bilinmiyor")
-            authors = d.get("author_name") or ["Bilinmiyor"]
-            a = authors[0]
-            selected_isbn = first_valid_isbn(d.get("isbn"))
-            if not selected_isbn:
-                continue
-            isbn = selected_isbn
-            subjects = d.get("subject") or ["Genel"]
-            sub = subjects[0]
-            y = d.get("first_publish_year") or datetime.date.today().year
-
+    def _show_results(self, books: list[OnlineBook]):
+        self.status.configure(text=f"✅ {len(books)} kapaklı sonuç bulundu.")
+        for book in books:
             c = GlassFrame(self.scroll, height=100)
             c.pack(fill="x", pady=10)
             c.pack_propagate(False)
 
             f_left = ctk.CTkFrame(c, fg_color="transparent")
             f_left.pack(side="left", padx=20, pady=10)
-            ctk.CTkLabel(f_left, text=f"📖 {t[:60]}", font=ctk.CTkFont(size=18, weight="bold")).pack(
+            ctk.CTkLabel(
+                f_left, text=f"📖 {book.title[:60]}", font=ctk.CTkFont(size=18, weight="bold")
+            ).pack(
                 anchor="w"
             )
             ctk.CTkLabel(
-                f_left, text=f"👤 {a} | 🏷️ {sub} | 📅 {y} | ISBN: {isbn}", text_color=APPLE_TEXT_MUTED
+                f_left,
+                text=(
+                    f"👤 {book.author} | 🏷️ {book.category} | 📅 {book.published_year} | "
+                    f"ISBN: {book.isbn} · {book.source}"
+                ),
+                text_color=APPLE_TEXT_MUTED,
             ).pack(anchor="w")
 
             f_right = ctk.CTkFrame(c, fg_color="transparent")
@@ -790,26 +777,31 @@ class AdminOpenLibraryView(ctk.CTkFrame):
                 f_right,
                 text="Ekle",
                 width=80,
-                command=lambda title=t, auth=a, i=isbn, s=sub, yr=y, q_ent=qty: self.add_book(
-                    title, auth, i, s, yr, q_ent
-                ),
+                command=lambda result=book, q_ent=qty: self.add_book(result, q_ent),
             ).pack(side="left")
-            rendered += 1
 
-        if rendered == 0:
-            self.status.configure(text="ISBN bilgisi olan sonuç bulunamadı.")
+        if not books:
+            self.status.configure(text="Kapak ve ISBN bilgisi olan sonuç bulunamadı.")
             ctk.CTkLabel(
                 self.scroll,
                 text="Farklı bir kitap adı, yazar veya ISBN ile yeniden deneyin.",
                 text_color=APPLE_TEXT_MUTED,
             ).pack(pady=40)
 
-    def add_book(self, t, a, i, s, y, q_ent):
+    def add_book(self, book: OnlineBook, q_ent):
         try:
-            cover_url = f"https://covers.openlibrary.org/b/isbn/{i}-L.jpg"
-            success, msg = BookController.add_book(t, a, i, s, y, "", cover_url, int(q_ent.get()))
+            success, msg = BookController.add_book(
+                book.title,
+                book.author,
+                book.isbn,
+                book.category,
+                book.published_year,
+                book.description,
+                book.cover_url,
+                int(q_ent.get()),
+            )
             if success:
-                messagebox.showinfo("Başarılı", f"{t} başarıyla eklendi!")
+                messagebox.showinfo("Başarılı", f"{book.title} kapak ve açıklamasıyla eklendi!")
             else:
                 messagebox.showerror("Hata", msg)
         except ValueError:
@@ -828,16 +820,22 @@ class AdminRequestsView(ctk.CTkFrame):
 
         apply_treeview_style()
         self.tree = ttk.Treeview(
-            self.t_frame, columns=("id", "mid", "mem", "tit", "aut", "isbn", "date", "url"), show="headings"
+            self.t_frame,
+            columns=("id", "mid", "mem", "tit", "aut", "isbn", "cat", "year", "desc", "date", "url"),
+            show="headings",
         )
         for c, h in zip(
             self.tree["columns"],
-            ["ID", "Üye ID", "İsteyen Üye", "Kitap Başlığı", "Yazar", "ISBN", "Tarih", "URL"],
+            [
+                "ID", "Üye ID", "İsteyen Üye", "Kitap Başlığı", "Yazar", "ISBN",
+                "Kategori", "Yıl", "Açıklama", "Tarih", "URL",
+            ],
             strict=True,
         ):
             self.tree.heading(c, text=h)
         self.tree.column("url", width=0, stretch=False)
         self.tree.column("mid", width=0, stretch=False)
+        self.tree.column("desc", width=0, stretch=False)
         self.tree.pack(fill="both", expand=True, padx=20, pady=20)
         self.tree.bind("<Double-1>", self.on_double)
 
@@ -866,11 +864,13 @@ class AdminRequestsView(ctk.CTkFrame):
             messagebox.showinfo("İstek seçin", "İşlemek için tablodan bir kitap isteği seçin.")
             return
         vals = self.tree.item(sel, "values")
-        req_id, member_id, member_name, title, author, isbn, date, url = vals
+        req_id, member_id, member_name, title, author, isbn, category, year, description, date, url = vals
 
         msg = f"{member_name} adlı üye '{title}' kitabını istiyor.\nKütüphaneye eklensin mi?"
         if messagebox.askyesno("Kitap İsteği", msg):
-            success, m = BookController.add_book(title, author, isbn, "Genel", 2024, "", url, 3)
+            success, m = BookController.add_book(
+                title, author, isbn, category, year, description, url, 3
+            )
             if success:
                 messagebox.showinfo("Başarılı", "Kitap kütüphaneye eklendi!")
                 RequestController.delete_request(req_id)

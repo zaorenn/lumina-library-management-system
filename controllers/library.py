@@ -275,13 +275,13 @@ class MemberController:
         with db_session() as connection:
             return connection.execute(
                 """
-                SELECT id, name, email, phone, registered_date
+                SELECT id, name, email, phone, registered_date, COALESCE(username, '')
                 FROM members
                 WHERE is_active = 1 AND is_approved = 1
-                  AND (name LIKE ? OR email LIKE ?)
+                  AND (name LIKE ? OR email LIKE ? OR COALESCE(username, '') LIKE ?)
                 ORDER BY name COLLATE NOCASE
                 """,
-                (like_term, like_term),
+                (like_term, like_term, like_term),
             ).fetchall()
 
     @staticmethod
@@ -521,12 +521,25 @@ class BorrowController:
 
 class RequestController:
     @staticmethod
-    def add_request(member_id, member_name, title_value, author, isbn_value, cover_url):
+    def add_request(
+        member_id,
+        member_name,
+        title_value,
+        author,
+        isbn_value,
+        cover_url,
+        category="Genel",
+        published_year=None,
+        description="",
+    ):
         try:
             clean_title = text(title_value, "Kitap adı", maximum=200)
             clean_author = optional_text(author, "Yazar", maximum=150)
             clean_isbn = isbn(isbn_value)
             clean_url = url(cover_url)
+            clean_category = text(category or "Genel", "Kategori", maximum=80)
+            clean_year = year(published_year or dt.date.today().year)
+            clean_description = optional_text(description, "Açıklama", maximum=5000)
             with db_session() as connection:
                 member = connection.execute(
                     "SELECT name FROM members WHERE id = ? AND is_active = 1",
@@ -546,10 +559,21 @@ class RequestController:
                 connection.execute(
                     """
                     INSERT INTO book_requests
-                        (member_id, member_name, title, author, isbn, cover_url)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (member_id, member_name, title, author, isbn, category,
+                         published_year, description, cover_url)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (member_id, member[0], clean_title, clean_author, clean_isbn, clean_url),
+                    (
+                        member_id,
+                        member[0],
+                        clean_title,
+                        clean_author,
+                        clean_isbn,
+                        clean_category,
+                        clean_year,
+                        clean_description,
+                        clean_url,
+                    ),
                 )
             return True, "Kitap isteği yöneticiye gönderildi."
         except ValidationError as exc:
@@ -560,8 +584,8 @@ class RequestController:
         with db_session() as connection:
             return connection.execute(
                 """
-                SELECT id, member_id, member_name, title, author, isbn,
-                       request_date, cover_url
+                SELECT id, member_id, member_name, title, author, isbn, category,
+                       published_year, description, request_date, cover_url
                 FROM book_requests ORDER BY id DESC
                 """
             ).fetchall()

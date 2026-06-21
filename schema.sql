@@ -62,6 +62,9 @@ CREATE TABLE IF NOT EXISTS book_requests (
     title TEXT NOT NULL CHECK (length(trim(title)) > 0),
     author TEXT NOT NULL DEFAULT '',
     isbn TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT 'Genel',
+    published_year INTEGER,
+    description TEXT NOT NULL DEFAULT '',
     cover_url TEXT NOT NULL DEFAULT '',
     request_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (member_id) REFERENCES members (id) ON DELETE SET NULL
@@ -110,6 +113,8 @@ CREATE INDEX IF NOT EXISTS idx_borrows_active_book
     ON borrows (book_id, actual_return_date);
 CREATE INDEX IF NOT EXISTS idx_notifications_unread
     ON notifications (member_id, is_read, created_at);
+CREATE INDEX IF NOT EXISTS idx_book_requests_member
+    ON book_requests (member_id, isbn, request_date);
 CREATE INDEX IF NOT EXISTS idx_profile_requests_status
     ON profile_requests (status, request_date);
 

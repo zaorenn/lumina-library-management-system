@@ -9,7 +9,7 @@ Python, SQLite ve CustomTkinter ile geliştirilen; üye deneyimi ile yönetim op
 ![Python](https://img.shields.io/badge/Python-3.10%2B-6857E5?style=flat-square&logo=python&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-3-2DD4BF?style=flat-square&logo=sqlite&logoColor=white)
 ![CustomTkinter](https://img.shields.io/badge/UI-CustomTkinter-8B7CFF?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-25%20passed-168B75?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-29%20passed-168B75?style=flat-square)
 
 </div>
 
@@ -19,26 +19,27 @@ LibSys, Faz 2 **Proje 1 – Kütüphane Yönetim Sistemi** için **Python + SQL 
 
 İki farklı masaüstü deneyimi vardır:
 
-- **Üye uygulaması:** 48 kapaklı ve özetli başlangıç kataloğu, anlık arama, kitap detayları, ödünç/iade, bildirimler, kitap isteği, profil talebi ve tema seçimi.
-- **Yönetim stüdyosu:** canlı gösterge paneli, kitap/üye CRUD, üyelik onayı, tüm ödünç geçmişi, manuel iade, Open Library entegrasyonu, talep yönetimi ve veri bakım araçları.
+- **Üye uygulaması:** 80 kapaklı ve özetli başlangıç kataloğu, anlık arama, kitap detayları, ödünç/iade, bildirimler, çevrimiçi kitap isteği, profil talebi ve tema seçimi.
+- **Yönetim stüdyosu:** canlı gösterge paneli, kitap/üye CRUD, üyelik onayı, tüm ödünç geçmişi, manuel iade, Open Library + Google Books entegrasyonu, talep yönetimi ve veri bakım araçları.
 
 ## Neden farklı?
 
 - **Neutral Glass tasarım sistemi:** koyu modda siyaha yakın cam yüzeyler, açık modda buzlu beyaz katmanlar, yumuşak gri sınırlar ve ölçülü turkuaz durum vurguları.
-- **Hazır ve gerçek katalog:** ilk açılışta otomatik eklenen 48 seçili eser; benzersiz ISBN, gerçek Open Library kapağı ve Türkçe özet içerir.
+- **Hazır ve gerçek katalog:** ilk açılışta otomatik eklenen 80 seçili eser; benzersiz ISBN, gerçek Open Library kapağı ve Türkçe özet içerir.
+- **Çift kaynaklı çevrimiçi arama:** ana kaynak Open Library, otomatik yedek Google Books'tur; yalnız kapaklı ve geçerli ISBN'li sonuçlar tek modelde birleştirilip önbelleğe alınır.
 - **Geçmişi koruyan arşivleme:** kitap ve üyeler doğrudan yok edilmez; aktif ödünç kontrolünden sonra arşivlenir.
 - **Veritabanı seviyesinde güvence:** stok düşürme, iade, gecikme cezası ve denetim günlüğü SQLite trigger'larıyla korunur.
 - **Eşzamanlı işlem güvenliği:** ödünç işlemleri `BEGIN IMMEDIATE`, busy timeout ve atomik transaction kullanır.
 - **Savunmacı doğrulama:** ISBN-10/13 checksum, e-posta, telefon, parola, yıl, URL ve kopya sayısı doğrulanır.
-- **Dış servis zarif düşüşü:** Open Library veya kapak servisi erişilemezse temel kütüphane işlevleri çalışmaya devam eder.
+- **Dış servis zarif düşüşü:** Google Books, Open Library veya kapak servisi erişilemezse temel kütüphane işlevleri çalışmaya devam eder.
 
 ## Hazır katalog
 
 Katalog ilk `main.py` veya `admin_app.py` çalıştırmasında otomatik hazırlanır; ayrıca komut çalıştırmak gerekmez. Başlangıç verisi:
 
-- Tam olarak 48 seçili eser içerir.
+- Tam olarak 80 seçili eser içerir.
 - Her kitapta geçerli ISBN-10/13 checksum, kategori, yayın yılı ve en az 100 karakterlik Türkçe özet bulunur.
-- Her kapak benzersiz Open Library ISBN adresine bağlıdır; 48 adresin tamamı görsel içerik yanıtıyla doğrulanmıştır.
+- Her kapak benzersiz Open Library ISBN adresine bağlıdır; 80 adresin tamamı görsel içerik veya geçerli görsel yönlendirmesiyle doğrulanmıştır.
 - Yükleme idempotenttir: uygulamayı tekrar açmak kopya kitap üretmez.
 - Üye kataloğu sayfalı/yükle-devam akışıyla yöneticinin gördüğü aktif envanterin tamamını gösterir.
 - Mevcut kayıtlardaki kapak ve özetler yönetici **Ayarlar → Katalog Metadatasını Onar** işlemiyle geri yüklenebilir.
@@ -64,8 +65,8 @@ flowchart LR
     C --> V["Validasyon\ncontrollers/validators.py"]
     C --> D["SQLite Veri Katmanı\nmodels/database.py"]
     D --> S["schema.sql\nTablolar + İndeksler + Trigger'lar"]
-    U -. isteğe bağlı .-> O["Open Library API"]
-    A -. isteğe bağlı .-> O
+    U -. çevrimiçi arama .-> O["Ortak Kitap Servisi\nOpen Library + Google Books"]
+    A -. çevrimiçi arama .-> O
 ```
 
 Arayüz yalnız kullanıcı etkileşimini yönetir; iş kuralları controller katmanında, veri bütünlüğü ise hem controller transaction'larında hem SQL şemasında uygulanır.
@@ -105,13 +106,13 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-### 2. İsteğe bağlı demo hesabını hazırlayın
+### 2. Demo verisini hazırlayın (isteğe bağlı)
 
 ```bash
 python seed_db.py
 ```
 
-Katalog zaten otomatik oluşur. Bu komut yalnız değerlendirme için onaylı demo üyeyi de hazırlar ve mevcut verileri silmez. Tamamen temiz demo veritabanı istenirse açıkça şu komut kullanılır:
+Katalog, yönetici ve onaylı deneme üyesi ilk açılışta otomatik oluşur; doğrudan uygulamaları başlatabilirsiniz. Bu komut demo parolalarını README değerlerine geri döndürür ve mevcut verileri silmez. Tamamen temiz demo veritabanı istenirse açıkça şu komut kullanılır:
 
 ```bash
 python seed_db.py --reset
@@ -135,14 +136,14 @@ python admin_app.py
 
 ## Demo hesapları
 
-`seed_db.py` çalıştırıldıktan sonra:
+İlk açılıştan itibaren (ek bir seed komutu gerektirmeden):
 
 | Rol | Kullanıcı | Parola |
 |---|---|---|
 | Yönetici | `admin` | `admin123` |
 | Deneme üyesi | `uye` | `uye123` |
 
-Üye giriş alanı hem e-posta hem kullanıcı adı kabul eder. Böylece değerlendiren kişi `python seed_db.py` sonrasında yukarıdaki kısa bilgilerle doğrudan giriş yapabilir.
+Üye giriş alanı hem e-posta hem kullanıcı adı kabul eder. Deneme üyesinin e-posta ve telefon alanları özellikle boştur; kayıt formunun güçlü parola ve geçerli e-posta kuralları gevşetilmeden yalnız veritabanı başlangıç katmanı tarafından oluşturulur. Yönetici **Üyeler** ekranında **Deneme Üyesi** ve `uye` kullanıcı adıyla görünür. Böylece değerlendiren kişi yukarıdaki kısa bilgilerle doğrudan giriş yapabilir.
 
 İlk veritabanı oluşturulmadan önce yönetici bilgileri ortam değişkenleriyle değiştirilebilir:
 
@@ -153,6 +154,8 @@ python admin_app.py
 ```
 
 > Demo parolaları yalnız yerel değerlendirme içindir. Gerçek kullanımda hemen değiştirilmelidir. Mevcut veritabanları yükseltilirken hesaplar ve parolalar korunur.
+
+Bilinen demo hesabının oluşturulması istenmeyen bir kurulumda uygulama açılmadan önce `LIBSYS_ENABLE_DEMO_ACCOUNT=0` ortam değişkeni ayarlanabilir.
 
 ## Test ve kalite
 
@@ -172,7 +175,7 @@ python -m tools.verify_catalog --online
 python -m tools.smoke_gui
 ```
 
-Test paketi geçici veritabanları kullanır; `libsys.db` dosyanıza dokunmaz. `verify_catalog` 48 uzak kapağı, `smoke_gui` ise ekran ortamında 5 üye ve 10 yönetici görünümünü açarak doğrular. Ayrıntılı kapsam [test planında](docs/TEST_PLAN.md) yer alır. Otomatik kontroller her push ve pull request'te GitHub Actions tarafından çalıştırılır.
+Test paketi geçici veritabanları kullanır; `libsys.db` dosyanıza dokunmaz. `verify_catalog` 80 uzak kapağı, `smoke_gui` ise ekran ortamında 5 üye ve 10 yönetici görünümünü açarak doğrular. Ayrıntılı kapsam [test planında](docs/TEST_PLAN.md) yer alır. Otomatik kontroller her push ve pull request'te GitHub Actions tarafından çalıştırılır.
 
 ## Yönetim stüdyosundaki çalışan araçlar
 
@@ -181,8 +184,8 @@ Test paketi geçici veritabanları kullanır; `libsys.db` dosyanıza dokunmaz. `
 | Genel Bakış | Canlı eser/kopya/üye/ödünç/bekleyen işlem metrikleri ve son hareketler |
 | Onay Bekleyenler | Seçili üyeyi açık buton veya çift tıklamayla onaylama |
 | Kitaplar | Arama, ekleme, düzenleme, kapak/özet güncelleme ve geçmişi koruyan arşivleme |
-| İnternetten Ekle | Open Library araması, geçerli ISBN seçimi ve kapaklı ekleme |
-| İstenen Kitaplar | Üye isteğini kataloğa ekleme veya bildirimli reddetme |
+| İnternetten Ekle | Open Library araması, Google Books yedeği, geçerli ISBN, açıklama ve otomatik kapakla ekleme |
+| İstenen Kitaplar | Üyenin aynı çevrimiçi kaynaktan seçtiği kitabı tüm metadatasıyla ekleme veya bildirimli reddetme |
 | Üyeler | Arama, manuel aktif üye oluşturma ve güvenli arşivleme |
 | Profil İstekleri | E-posta çakışma kontrollü onay/ret ve üyeye bildirim |
 | Tüm Geçmiş | Aktif ve tamamlanmış ödünçleri izleme, manuel iade |
@@ -226,8 +229,10 @@ LibSys/
 │   ├── library.py              # Kitap, üye, ödünç ve talep iş kuralları
 │   └── validators.py           # Merkezi veri doğrulama
 ├── models/
-│   ├── catalog.py              # 48 kapaklı ve özetli başlangıç kataloğu
+│   ├── catalog.py              # 80 kapaklı ve özetli başlangıç kataloğu
 │   └── database.py             # Bağlantı, WAL transaction ve şema geçişleri
+├── services/
+│   └── book_api.py             # Open Library + Google Books ortak arama servisi
 ├── views/
 │   ├── theme.py                # LibSys Neutral Glass tasarım sistemi
 │   ├── ui.py                   # Üye arayüzü
@@ -235,6 +240,7 @@ LibSys/
 ├── tests/
 │   ├── test_core.py            # İş kuralı entegrasyon testleri
 │   ├── test_catalog.py         # Katalog bütünlüğü ve idempotent yükleme
+│   ├── test_book_api.py        # Çevrimiçi servis normalizasyon/yedekleme testleri
 │   └── test_sql_artifacts.py   # SQL teslim dosyası testleri
 ├── tools/
 │   ├── verify_catalog.py       # ISBN/özet/uzak kapak doğrulaması
@@ -252,6 +258,7 @@ LibSys/
 - SQL sorguları parametreli çalışır.
 - Görsel indirmeleri 5 MB ile sınırlıdır ve ağ çağrıları timeout kullanır.
 - Üye kataloğu başka üyelerin kimlik bilgilerini göstermez.
+- Katalog, imleç kartların üzerindeyken de fare tekerleğiyle kaydırılır ve sona yaklaşıldığında sonraki eserleri yükler.
 - Üye bildirimi sahiplik denetimiyle okundu işaretlenir.
 - Hassas yerel dosyalar ve veritabanları `.gitignore` kapsamındadır.
 

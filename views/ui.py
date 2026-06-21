@@ -5,12 +5,11 @@ import urllib.request
 from tkinter import messagebox, ttk
 
 import customtkinter as ctk
-import requests
 from PIL import Image
 
 from controllers.auth import AuthController
 from controllers.library import BookController, BorrowController, NotificationController, RequestController
-from controllers.validators import first_valid_isbn
+from services.book_api import BookServiceError, OnlineBook, search_books
 from views.theme import (
     ACCENT,
     BACKGROUND,
@@ -612,7 +611,11 @@ class CatalogView(ctk.CTkFrame):
         self.load_more_button.pack(pady=(8, 24))
 
         self.scroll.bind("<Configure>", self.on_resize)
-        self.scroll._parent_canvas.bind("<MouseWheel>", self.on_scroll, add="+")
+        self._wheel_bindings = []
+        window = self.winfo_toplevel()
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            binding_id = window.bind(sequence, self.on_mousewheel, add="+")
+            self._wheel_bindings.append((sequence, binding_id))
 
         self.load_books()
 
@@ -675,9 +678,29 @@ class CatalogView(ctk.CTkFrame):
         for i, card in enumerate(self.cards):
             card.grid(row=i // cols, column=i % cols, padx=8, pady=15)
 
-    def on_scroll(self, event):
+    def on_mousewheel(self, event):
+        """Scroll even while the pointer is over a nested catalog card."""
+
+        if getattr(event, "num", None) == 4:
+            direction = -1
+        elif getattr(event, "num", None) == 5:
+            direction = 1
+        else:
+            delta = getattr(event, "delta", 0)
+            if not delta:
+                return None
+            direction = -1 if delta > 0 else 1
+        self.scroll._parent_canvas.yview_scroll(direction * 3, "units")
         if self.scroll._parent_canvas.yview()[1] > 0.95:
             self.load_books()
+        return "break"
+
+    def destroy(self):
+        window = self.winfo_toplevel()
+        for sequence, binding_id in getattr(self, "_wheel_bindings", []):
+            if binding_id:
+                window.unbind(sequence, binding_id)
+        super().destroy()
 
     def on_borrow(self, book_id):
         if not self.main_app.user:
@@ -898,7 +921,7 @@ class UserRequestView(ctk.CTkFrame):
 
         self.ent = ctk.CTkEntry(
             self.top,
-            placeholder_text="🔍 Kitap Adı, Yazar (OpenLibrary)...",
+            placeholder_text="🔍 Kitap adı, ISBN veya yazar (Open Library + Google Books)...",
             width=400,
             height=36,
             corner_radius=18,
@@ -921,27 +944,24 @@ class UserRequestView(ctk.CTkFrame):
             self.scroll, text="💡 Popüler İstek Önerileri", font=ctk.CTkFont(size=18, weight="bold")
         ).pack(anchor="w", pady=10)
         recs = [
-            (
-                "Harry Potter and the Sorcerer's Stone",
-                "J.K. Rowling",
-                "9780590353427",
-                "https://covers.openlibrary.org/b/isbn/9780590353427-M.jpg",
+            OnlineBook(
+                "Harry Potter and the Sorcerer's Stone", "J.K. Rowling", "9780590353427", "Fantastik",
+                1997, "Harry Potter'ın büyücülük dünyasına ilk adımını ve Hogwarts'taki dostluklarını anlatan eser.",
+                "https://covers.openlibrary.org/b/isbn/9780590353427-M.jpg", "Open Library",
             ),
-            (
-                "1984",
-                "George Orwell",
-                "9780451524935",
-                "https://covers.openlibrary.org/b/isbn/9780451524935-M.jpg",
+            OnlineBook(
+                "1984", "George Orwell", "9780451524935", "Bilim Kurgu", 1949,
+                "Büyük Birader'in gözetimindeki bir toplumda hakikat ve özgürlük arayışını anlatan distopya.",
+                "https://covers.openlibrary.org/b/isbn/9780451524935-M.jpg", "Open Library",
             ),
-            (
-                "The Great Gatsby",
-                "F. Scott Fitzgerald",
-                "9780743273565",
-                "https://covers.openlibrary.org/b/isbn/9780743273565-M.jpg",
+            OnlineBook(
+                "The Great Gatsby", "F. Scott Fitzgerald", "9780743273565", "Klasik", 1925,
+                "Caz Çağı'nın ihtişamı altında aşk, sınıf ve Amerikan Rüyası'nın kırılganlığını anlatan roman.",
+                "https://covers.openlibrary.org/b/isbn/9780743273565-M.jpg", "Open Library",
             ),
         ]
-        for title, author, isbn, cover in recs:
-            self.build_result_card(title, author, isbn, cover)
+        for book in recs:
+            self.build_result_card(book)
 
     def search(self):
         q = self.ent.get()
@@ -954,51 +974,41 @@ class UserRequestView(ctk.CTkFrame):
 
         def _do_search():
             try:
-                r = requests.get(
-                    "https://openlibrary.org/search.json",
-                    params={"q": q, "limit": 5},
-                    timeout=10,
-                )
-                r.raise_for_status()
-                docs = r.json().get("docs", [])
-                self.after(0, self._show_results, docs)
-            except requests.RequestException:
-                self.after(0, lambda: self.status.configure(text="❌ Hata."))
+                books = search_books(q, limit=8)
+                self.after(0, self._show_results, books)
+            except BookServiceError as exc:
+                self.after(0, lambda message=str(exc): self.status.configure(text=f"❌ {message}"))
 
         threading.Thread(target=_do_search, daemon=True).start()
 
-    def _show_results(self, docs):
-        rendered = 0
-        for d in docs:
-            t = d.get("title", "Bilinmiyor")
-            authors = d.get("author_name") or ["Bilinmiyor"]
-            a = authors[0]
-            selected_isbn = first_valid_isbn(d.get("isbn"))
-            if not selected_isbn:
-                continue
-            isbn = selected_isbn
-            cov = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg"
-            self.build_result_card(t, a, isbn, cov)
-            rendered += 1
-        if rendered:
-            self.status.configure(text=f"✓ ISBN bilgili {rendered} sonuç.")
+    def _show_results(self, books: list[OnlineBook]):
+        for book in books:
+            self.build_result_card(book)
+        if books:
+            self.status.configure(text=f"✓ {len(books)} kapaklı sonuç.")
         else:
-            self.status.configure(text="ISBN bilgisi olan sonuç bulunamadı.")
+            self.status.configure(text="Kapak ve ISBN bilgisi olan sonuç bulunamadı.")
             ctk.CTkLabel(
                 self.scroll,
                 text="Farklı bir kitap adı veya yazar ile yeniden deneyin.",
                 text_color=APPLE_TEXT_MUTED,
             ).pack(pady=40)
 
-    def build_result_card(self, t, a, i, c_url):
+    def build_result_card(self, book: OnlineBook):
         c = GlassFrame(self.scroll, height=100)
         c.pack(fill="x", pady=10)
         c.pack_propagate(False)
 
         f_left = ctk.CTkFrame(c, fg_color="transparent")
         f_left.pack(side="left", padx=20, pady=10)
-        ctk.CTkLabel(f_left, text=f"📖 {t[:50]}", font=ctk.CTkFont(size=16, weight="bold")).pack(anchor="w")
-        ctk.CTkLabel(f_left, text=f"👤 {a} | ISBN: {i}", text_color=APPLE_TEXT_MUTED).pack(anchor="w")
+        ctk.CTkLabel(
+            f_left, text=f"📖 {book.title[:50]}", font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            f_left,
+            text=f"👤 {book.author} | ISBN: {book.isbn} · {book.source}",
+            text_color=APPLE_TEXT_MUTED,
+        ).pack(anchor="w")
 
         AnimatedButton(
             c,
@@ -1006,14 +1016,24 @@ class UserRequestView(ctk.CTkFrame):
             width=140,
             fg_color=APPLE_ORANGE,
             hover_color="#cc7a00",
-            command=lambda: self.request_book(t, a, i, c_url),
+            command=lambda: self.request_book(book),
         ).pack(side="right", padx=20)
 
-    def request_book(self, t, a, i, c_url):
-        if messagebox.askyesno("İstek", f"{t} kitabını yöneticiden talep etmek istiyor musunuz?"):
+    def request_book(self, book: OnlineBook):
+        if messagebox.askyesno("İstek", f"{book.title} kitabını yöneticiden talep etmek istiyor musunuz?"):
             uid = self.main_app.user["id"]
             uname = self.main_app.user["name"]
-            success, msg = RequestController.add_request(uid, uname, t, a, i, c_url)
+            success, msg = RequestController.add_request(
+                uid,
+                uname,
+                book.title,
+                book.author,
+                book.isbn,
+                book.cover_url,
+                book.category,
+                book.published_year,
+                book.description,
+            )
             if success:
                 messagebox.showinfo("Başarılı", "İsteğiniz yöneticiye iletildi!")
             else:

@@ -15,6 +15,13 @@ DB_PATH: str | Path = Path(os.getenv("LIBSYS_DB_PATH", BASE_DIR / "libsys.db"))
 SCHEMA_PATH = BASE_DIR / "schema.sql"
 DEFAULT_ADMIN_USERNAME = os.getenv("LIBSYS_ADMIN_USERNAME", "admin")
 DEFAULT_ADMIN_PASSWORD = os.getenv("LIBSYS_ADMIN_PASSWORD", "admin123")
+DEMO_MEMBER_ENABLED = os.getenv("LIBSYS_ENABLE_DEMO_ACCOUNT", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+}
+DEMO_MEMBER_USERNAME = "uye"
+DEMO_MEMBER_PASSWORD = "uye123"
 
 
 def get_connection(db_path: str | Path | None = None) -> sqlite3.Connection:
@@ -64,6 +71,58 @@ def _migrate_legacy_schema(connection: sqlite3.Connection) -> None:
         connection.execute("ALTER TABLE members ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
     if "members" in tables and "username" not in _column_names(connection, "members"):
         connection.execute("ALTER TABLE members ADD COLUMN username TEXT COLLATE NOCASE")
+    if "book_requests" in tables:
+        request_columns = _column_names(connection, "book_requests")
+        if "category" not in request_columns:
+            connection.execute("ALTER TABLE book_requests ADD COLUMN category TEXT NOT NULL DEFAULT 'Genel'")
+        if "published_year" not in request_columns:
+            connection.execute("ALTER TABLE book_requests ADD COLUMN published_year INTEGER")
+        if "description" not in request_columns:
+            connection.execute("ALTER TABLE book_requests ADD COLUMN description TEXT NOT NULL DEFAULT ''")
+
+
+def _ensure_demo_member_record(connection: sqlite3.Connection, *, reset_password: bool = False) -> None:
+    existing = connection.execute(
+        "SELECT id FROM members WHERE username = ? COLLATE NOCASE",
+        (DEMO_MEMBER_USERNAME,),
+    ).fetchone()
+    if existing:
+        connection.execute(
+            """
+            UPDATE members
+            SET name = 'Deneme Üyesi', email = '', phone = '',
+                is_approved = 1, is_active = 1, must_change_password = 0
+            WHERE id = ?
+            """,
+            (existing[0],),
+        )
+        if reset_password:
+            password_hash = bcrypt.hashpw(DEMO_MEMBER_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode(
+                "utf-8"
+            )
+            connection.execute(
+                "UPDATE members SET password_hash = ? WHERE id = ?",
+                (password_hash, existing[0]),
+            )
+        return
+
+    password_hash = bcrypt.hashpw(DEMO_MEMBER_PASSWORD.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    cursor = connection.execute(
+        """
+        INSERT INTO members
+            (name, username, email, phone, password_hash,
+             is_approved, is_active, must_change_password)
+        VALUES ('Deneme Üyesi', ?, '', '', ?, 1, 1, 0)
+        """,
+        (DEMO_MEMBER_USERNAME, password_hash),
+    )
+    connection.execute(
+        """
+        INSERT INTO audit_logs (action_type, table_name, record_id, description)
+        VALUES ('CREATE', 'members', ?, 'Yönetici demo üyesi oluşturuldu: Deneme Üyesi')
+        """,
+        (cursor.lastrowid,),
+    )
 
 
 def init_db(*, seed_catalog: bool = True) -> None:
@@ -75,7 +134,7 @@ def init_db(*, seed_catalog: bool = True) -> None:
         connection.execute("PRAGMA synchronous = NORMAL")
         _migrate_legacy_schema(connection)
         connection.executescript(schema)
-        connection.execute("PRAGMA user_version = 3")
+        connection.execute("PRAGMA user_version = 4")
 
         admin_count = connection.execute("SELECT COUNT(*) FROM admins").fetchone()[0]
         if admin_count == 0:
@@ -95,10 +154,20 @@ def init_db(*, seed_catalog: bool = True) -> None:
                 ),
             )
 
+        if DEMO_MEMBER_ENABLED:
+            _ensure_demo_member_record(connection)
+
         if seed_catalog:
             from models.catalog import ensure_default_catalog
 
             ensure_default_catalog(connection)
+
+
+def ensure_demo_member(*, reset_password: bool = True) -> None:
+    """Create the evaluator account without relaxing public registration rules."""
+
+    with db_session() as connection:
+        _ensure_demo_member_record(connection, reset_password=reset_password)
 
 
 def check_integrity() -> tuple[bool, str]:
