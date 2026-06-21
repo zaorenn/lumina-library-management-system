@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from views.ui import CatalogView
+from views.ui import CATALOG_SCROLL_UNITS, CatalogView
 
 
 class FakeCanvas:
@@ -29,5 +29,5 @@ def test_catalog_mousewheel_scrolls_nested_cards_and_triggers_lazy_load():
     result = CatalogView.on_mousewheel(view, SimpleNamespace(delta=-120, num=None))
 
     assert result == "break"
-    assert canvas.scroll_calls == [(3, "units")]
+    assert canvas.scroll_calls == [(CATALOG_SCROLL_UNITS, "units")]
     assert view.loaded is True

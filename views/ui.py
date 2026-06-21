@@ -39,6 +39,7 @@ IMAGE_CACHE = {}
 IMAGE_LOCK = threading.Lock()
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_CACHED_IMAGES = 128
+CATALOG_SCROLL_UNITS = 9
 
 
 def _download_cover(url):
@@ -690,7 +691,7 @@ class CatalogView(ctk.CTkFrame):
             if not delta:
                 return None
             direction = -1 if delta > 0 else 1
-        self.scroll._parent_canvas.yview_scroll(direction * 3, "units")
+        self.scroll._parent_canvas.yview_scroll(direction * CATALOG_SCROLL_UNITS, "units")
         if self.scroll._parent_canvas.yview()[1] > 0.95:
             self.load_books()
         return "break"
